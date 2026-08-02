@@ -28,6 +28,7 @@ class PiperMotorsBus:
         self.calibration = calibration
         self.piper = C_PiperInterface_V2(port)
         self._is_connected = False
+        self._last_motion_ctrl: tuple[int, int, int, int] | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -46,6 +47,7 @@ class PiperMotorsBus:
             if result is False:
                 raise ConnectionError(f"Failed to open CAN port {self.port!r} for {self.id}")
         self._is_connected = True
+        self._last_motion_ctrl = None
 
     def disconnect(self, disable_torque: bool = True, park: bool = False) -> None:
         if not self._is_connected:
@@ -203,7 +205,7 @@ class PiperMotorsBus:
         if missing:
             raise KeyError(f"Piper joint action is missing: {sorted(missing)}")
         raw = self._unnormalize(action)
-        self.piper.ModeCtrl(0x01, 0x01, speed_percent, 0x00)
+        self._set_motion_ctrl(0x01, 0x01, speed_percent, 0x00)
         self.piper.JointCtrl(*(int(raw[f"joint{i}"]) for i in range(1, 7)))
         self.set_gripper_percent(action["gripper"])
 
@@ -216,12 +218,30 @@ class PiperMotorsBus:
     ) -> None:
         move_mode_code = 0x00 if move_mode == "move_p" else 0x02
         raw = [int(round(value * 1000.0)) for value in pose_mm_rpy_deg]
-        self.piper.ModeCtrl(0x01, move_mode_code, speed_percent, 0x00)
+        self._set_motion_ctrl(0x01, move_mode_code, speed_percent, 0x00)
         self.piper.EndPoseCtrl(*raw)
 
     def set_gripper_percent(self, value: float, effort: int = 1000) -> None:
         raw = self._unnormalize({"gripper": value})["gripper"]
-        self.piper.GripperCtrl(abs(int(raw)), effort, 0x03, 0)
+        self.piper.GripperCtrl(abs(int(raw)), effort, 0x01, 0)
+
+    def _set_motion_ctrl(
+        self,
+        ctrl_mode: int,
+        move_mode: int,
+        speed_percent: int,
+        mit_mode: int,
+    ) -> None:
+        command = (ctrl_mode, move_mode, speed_percent, mit_mode)
+        if self._last_motion_ctrl == command:
+            return
+        motion_ctrl = getattr(self.piper, "MotionCtrl_2", None)
+        if callable(motion_ctrl):
+            motion_ctrl(*command)
+        else:
+            self.piper.ModeCtrl(*command)
+        self._last_motion_ctrl = command
+        time.sleep(0.02)
 
     def _normalize(self, raw_values: dict[str, float]) -> dict[str, float]:
         result: dict[str, float] = {}
