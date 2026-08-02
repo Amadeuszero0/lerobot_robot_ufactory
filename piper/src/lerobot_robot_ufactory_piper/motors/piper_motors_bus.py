@@ -4,7 +4,6 @@ from typing import Any
 
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from piper_sdk import C_PiperInterface_V2
-from wego_piper.port_handler import PortHandler
 
 from .tables import PARKING_POSITION
 
@@ -27,7 +26,6 @@ class PiperMotorsBus:
         self.port = port
         self.motors = motors
         self.calibration = calibration
-        self.port_handler = PortHandler()
         self.piper = C_PiperInterface_V2(port)
         self._is_connected = False
 
@@ -42,9 +40,11 @@ class PiperMotorsBus:
     def connect(self, handshake: bool = True) -> None:
         if self._is_connected:
             return
-        self.port_handler.setupPort(self.piper)
-        if not self.port_handler.openPort():
-            raise ConnectionError(f"Failed to open CAN port {self.port!r} for {self.id}")
+        connect_port = getattr(self.piper, "ConnectPort", None)
+        if callable(connect_port):
+            result = connect_port()
+            if result is False:
+                raise ConnectionError(f"Failed to open CAN port {self.port!r} for {self.id}")
         self._is_connected = True
 
     def disconnect(self, disable_torque: bool = True, park: bool = False) -> None:
@@ -54,7 +54,14 @@ class PiperMotorsBus:
             self.parking()
         if disable_torque:
             self.piper.DisablePiper()
-        self.port_handler.closePort()
+        for method_name in ("DisconnectPort", "ClosePort", "Disconnect"):
+            close_port = getattr(self.piper, method_name, None)
+            if callable(close_port):
+                try:
+                    close_port()
+                except Exception:
+                    logger.debug("Ignoring Piper %s cleanup failure", method_name, exc_info=True)
+                break
         self._is_connected = False
 
     def read(self, data_name: str, motor: str) -> int | float:
