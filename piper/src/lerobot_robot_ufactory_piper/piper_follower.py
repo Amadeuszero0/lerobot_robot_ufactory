@@ -58,13 +58,19 @@ class PiperFollower(Robot):
 
     @cached_property
     def action_features(self) -> dict[str, type]:
-        return {self._key(key): float for key in self._state_keys}
+        return {self._key(key): float for key in self._action_keys}
 
     @property
     def _state_keys(self) -> tuple[str, ...]:
         if self.config.control_space == "joint":
             return JOINT_KEYS
         return POSE_KEYS + ("gripper.pos",)
+
+    @property
+    def _action_keys(self) -> tuple[str, ...]:
+        if self.config.send_gripper:
+            return self._state_keys
+        return tuple(key for key in self._state_keys if key != "gripper.pos")
 
     @property
     def is_connected(self) -> bool:
@@ -158,10 +164,10 @@ class PiperFollower(Robot):
                     continue
                 key = key[len(self.prefix) :]
             local[key] = float(value)
-        missing = set(self._state_keys) - set(local)
+        missing = set(self._action_keys) - set(local)
         if missing:
             raise KeyError(f"Action for {self.id} is missing keys: {sorted(missing)}")
-        return {key: local[key] for key in self._state_keys}
+        return {key: local[key] for key in self._action_keys}
 
     def _send_joint_action(self, local: dict[str, float]) -> dict[str, float]:
         goal = {key.removesuffix(".pos"): value for key, value in local.items()}
@@ -194,7 +200,9 @@ class PiperFollower(Robot):
         limited = [*limited_xyz, *limited_rotation]
 
         roll_deg, pitch_deg, yaw_deg = axis_angle_to_rpy_degrees(*limited[3:6])
-        gripper_unit = min(1.0, max(0.0, local["gripper.pos"]))
+        gripper_unit = None
+        if self.config.send_gripper:
+            gripper_unit = min(1.0, max(0.0, local["gripper.pos"]))
         now_s = time.monotonic()
         if now_s - self._last_command_time_s >= self.config.min_command_interval_s:
             self.bus.set_end_pose(
@@ -202,13 +210,14 @@ class PiperFollower(Robot):
                 move_mode=self.config.move_mode,
                 speed_percent=self.config.move_speed_percent,
             )
-            if self.config.send_gripper:
+            if gripper_unit is not None:
                 self.bus.set_gripper_percent(
                     gripper_unit * 100.0, effort=self.config.gripper_effort
                 )
             self._last_command_time_s = now_s
         sent = dict(zip(POSE_KEYS, limited, strict=True))
-        sent["gripper.pos"] = gripper_unit
+        if gripper_unit is not None:
+            sent["gripper.pos"] = gripper_unit
         return sent
 
     def parking(self) -> None:

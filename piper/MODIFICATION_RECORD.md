@@ -59,3 +59,11 @@ Pika、双臂前缀、mock robot 和录制流程复用本机父项目：
 
 真实硬件运动、相机读取和 CAN 时序没有在本次离线环境中执行；必须按 README 逐臂低速联调。
 
+## 2026-08-02 单 Pika 遥操 Piper 联调修正
+
+- `config.py`：移除旧版 `draccus` 无法解析的 `Literal` 字段；增加 `send_gripper` 和最小命令间隔配置。
+- `motors/piper_motors_bus.py`：适配当前 Piper SDK 的连接、使能和运动控制接口，并避免每个控制周期重复切换运动模式。
+- `piper_follower.py`：为笛卡尔控制命令增加限频；`send_gripper: false` 时不再要求动作中含有 `gripper.pos`，也不会向 Piper 发送夹爪控制帧，但观测仍保留夹爪状态。
+- `config/single_pika_piper.yaml`：新增单 Pika 遥操单 Piper 的低速联调配置；当前以 10 Hz 发送末端命令并暂时关闭夹爪控制。
+
+现场验证进展：Pika Sense、T20 定位、Vive 双基站标定和 Piper CAN 接收均已成功；限频配置已正确加载，但当次运行在发送 CAN 命令前被缺失的 `gripper.pos` 字段校验中止。夹爪字段修正后，仍需继续确认 `Message NOT sent` 是否消失并完成真实机械臂的低速运动验证。
