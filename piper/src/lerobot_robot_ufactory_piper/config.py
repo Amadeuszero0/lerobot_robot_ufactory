@@ -34,6 +34,8 @@ class PiperFollowerConfig(RobotConfig):
     move_mode: str = "move_p"
     move_speed_percent: int = 20
     gripper_effort: int = 1000
+    send_gripper: bool = True
+    min_command_interval_s: float = 0.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -46,6 +48,8 @@ class PiperFollowerConfig(RobotConfig):
             raise ValueError("move_speed_percent must be in [1, 100]")
         if self.max_cartesian_step_mm <= 0 or self.max_rotation_step_rad <= 0:
             raise ValueError("Cartesian step limits must be positive")
+        if self.min_command_interval_s < 0:
+            raise ValueError("min_command_interval_s must be non-negative")
         for name in ("workspace_x", "workspace_y", "workspace_z"):
             bounds = getattr(self, name)
             if bounds is not None and bounds[0] >= bounds[1]:

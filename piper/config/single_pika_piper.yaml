@@ -17,6 +17,8 @@ robot:
   move_mode: move_p
   move_speed_percent: 10
   gripper_effort: 1000
+  send_gripper: false
+  min_command_interval_s: 0.1
   cameras:
     fisheye:
       type: opencv
@@ -36,8 +38,8 @@ teleop:
   type: uf::pika_teleop
   id: pika_single
   port: /dev/ttyUSB50
-  frequency: 100
-  use_gripper: true
+  frequency: 30
+  use_gripper: false
   scale_xyz: 1.0
   tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
   robot_base_pose: [300, 0, 250, 180, 0, 0]

@@ -38,6 +38,7 @@ class PiperFollower(Robot):
         )
         self.cameras: dict[str, Camera] = make_cameras_from_configs(config.cameras)
         self._camera_executor: ThreadPoolExecutor | None = None
+        self._last_command_time_s = 0.0
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
                 max_workers=len(self.cameras), thread_name_prefix=f"{prefix or 'piper'}-camera"
@@ -193,13 +194,19 @@ class PiperFollower(Robot):
         limited = [*limited_xyz, *limited_rotation]
 
         roll_deg, pitch_deg, yaw_deg = axis_angle_to_rpy_degrees(*limited[3:6])
-        self.bus.set_end_pose(
-            (*limited[:3], roll_deg, pitch_deg, yaw_deg),
-            move_mode=self.config.move_mode,
-            speed_percent=self.config.move_speed_percent,
-        )
         gripper_unit = min(1.0, max(0.0, local["gripper.pos"]))
-        self.bus.set_gripper_percent(gripper_unit * 100.0, effort=self.config.gripper_effort)
+        now_s = time.monotonic()
+        if now_s - self._last_command_time_s >= self.config.min_command_interval_s:
+            self.bus.set_end_pose(
+                (*limited[:3], roll_deg, pitch_deg, yaw_deg),
+                move_mode=self.config.move_mode,
+                speed_percent=self.config.move_speed_percent,
+            )
+            if self.config.send_gripper:
+                self.bus.set_gripper_percent(
+                    gripper_unit * 100.0, effort=self.config.gripper_effort
+                )
+            self._last_command_time_s = now_s
         sent = dict(zip(POSE_KEYS, limited, strict=True))
         sent["gripper.pos"] = gripper_unit
         return sent
