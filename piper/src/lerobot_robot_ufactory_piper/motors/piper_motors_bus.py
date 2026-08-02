@@ -3,7 +3,6 @@ import time
 from typing import Any
 
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
-from lerobot.motors.motors_bus import MotorsBusBase
 from piper_sdk import C_PiperInterface_V2
 from wego_piper.port_handler import PortHandler
 
@@ -12,7 +11,7 @@ from .tables import PARKING_POSITION
 logger = logging.getLogger(__name__)
 
 
-class PiperMotorsBus(MotorsBusBase):
+class PiperMotorsBus:
     """CAN bus adapter derived from the standalone lerobot_robot_piper project."""
 
     apply_drive_mode = False
@@ -24,8 +23,10 @@ class PiperMotorsBus(MotorsBusBase):
         motors: dict[str, Motor],
         calibration: dict[str, MotorCalibration],
     ) -> None:
-        super().__init__(port, motors, calibration)
         self.id = id
+        self.port = port
+        self.motors = motors
+        self.calibration = calibration
         self.port_handler = PortHandler()
         self.piper = C_PiperInterface_V2(port)
         self._is_connected = False
@@ -211,4 +212,3 @@ class PiperMotorsBus(MotorsBusBase):
                 raise NotImplementedError(self.motors[motor].norm_mode)
             result[motor] = int(raw)
         return result
-
