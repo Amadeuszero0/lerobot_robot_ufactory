@@ -53,7 +53,7 @@ class PiperMotorsBus:
         if park:
             self.parking()
         if disable_torque:
-            self.piper.DisablePiper()
+            self._disable_arm()
         for method_name in ("DisconnectPort", "ClosePort", "Disconnect"):
             close_port = getattr(self.piper, method_name, None)
             if callable(close_port):
@@ -87,7 +87,7 @@ class PiperMotorsBus:
     def enable_torque(self, motors: str | list[str] | None = None, num_retry: int = 0) -> None:
         retries = num_retry if num_retry > 0 else 50
         while retries > 0:
-            if self.piper.EnablePiper():
+            if self._enable_arm():
                 return
             retries -= 1
             time.sleep(0.1)
@@ -96,7 +96,40 @@ class PiperMotorsBus:
     def disable_torque(
         self, motors: str | list[str] | None = None, num_retry: int = 0
     ) -> None:
-        self.piper.DisablePiper()
+        self._disable_arm()
+
+    def _enable_arm(self) -> bool:
+        return self._call_arm_power_method(("EnablePiper", "EnableArm"))
+
+    def _disable_arm(self) -> bool:
+        return self._call_arm_power_method(("DisablePiper", "DisableArm"))
+
+    def _call_arm_power_method(self, method_names: tuple[str, ...]) -> bool:
+        """Call the arm enable/disable method across Piper SDK versions.
+
+        Older examples use ``EnablePiper``/``DisablePiper`` while newer
+        ``C_PiperInterface_V2`` builds expose ``EnableArm``/``DisableArm``.
+        Some SDK builds take no argument and some take a motor index/group, so
+        try the no-argument call first and then the all-motors id used by Piper.
+        """
+
+        type_errors: list[TypeError] = []
+        for method_name in method_names:
+            method = getattr(self.piper, method_name, None)
+            if not callable(method):
+                continue
+            for args in ((), (7,)):
+                try:
+                    result = method(*args)
+                except TypeError as exc:
+                    type_errors.append(exc)
+                    continue
+                return True if result is None else bool(result)
+        if type_errors:
+            raise type_errors[-1]
+        raise AttributeError(
+            f"Piper SDK object has none of the expected methods: {', '.join(method_names)}"
+        )
 
     def read_calibration(self) -> dict[str, MotorCalibration]:
         return self.calibration
