@@ -169,7 +169,14 @@ class PikaDevice(object):
             logger.info('Vive Tracker初始化成功')
             time.sleep(2)
 
-            devices = self._pika_sense.get_tracker_devices()
+            devices = []
+            expired_time = time.monotonic() + 15.0
+            while time.monotonic() < expired_time:
+                devices = self._pika_sense.get_tracker_devices()
+                tracker_devices = [device for device in devices if not device.startswith('LH')]
+                if tracker_devices:
+                    break
+                time.sleep(0.5)
             if not devices:
                 logger.error('未检测到Vive Tracker设备')
                 self._pika_sense.disconnect()
@@ -177,12 +184,17 @@ class PikaDevice(object):
             logger.info('检测到Vive Tracker设备: {}'.format(devices))
 
             self.pika_tracker_device = None
-            for device in devices:
+            tracker_devices = [device for device in devices if not device.startswith('LH')]
+            if not tracker_devices:
+                logger.error('No Pika tracker found; only lighthouse devices were detected: {}'.format(devices))
+                self._pika_sense.disconnect()
+                exit(1)
+            for device in tracker_devices:
                 if device.startswith('WM'):
                     self.pika_tracker_device = device
                     break
             else:
-                self.pika_tracker_device = devices[0]
+                self.pika_tracker_device = tracker_devices[0]
             logger.info('开始跟踪设备: {}\n'.format(self.pika_tracker_device))
         return self._pika_sense
     
