@@ -67,3 +67,11 @@ Pika、双臂前缀、mock robot 和录制流程复用本机父项目：
 - `config/single_pika_piper.yaml`：新增单 Pika 遥操单 Piper 的低速联调配置；当前以 10 Hz 发送末端命令并暂时关闭夹爪控制。
 
 现场验证进展：Pika Sense、T20 定位、Vive 双基站标定和 Piper CAN 接收均已成功；限频配置已正确加载，但当次运行在发送 CAN 命令前被缺失的 `gripper.pos` 字段校验中止。夹爪字段修正后，仍需继续确认 `Message NOT sent` 是否消失并完成真实机械臂的低速运动验证。
+
+### USB-CAN 现场结论
+
+- USB-CAN 经扩展坞连接时出现单向/不稳定通信：SocketCAN 发送队列持续积压并产生 `Message NOT sent`。
+- 将 `1d50:606f`、`gs_usb` USB-CAN 直接接入主机后，发送队列保持 `backlog 0b 0p`，TX/RX 正常增长且无丢包。
+- `PiperMotorsBus` 因此使用 `C_PiperInterface_V2(port, False)`，按照 Piper SDK 对通用 CAN 适配器的要求关闭硬件自动判定。
+- 运动模式设置优先使用当前 SDK 推荐的 `ModeCtrl`；仅在该接口不存在时回退到旧版 `MotionCtrl_2`。
+- 现场部署要求 USB-CAN 直连主机，不经过扩展坞或 USB Hub。

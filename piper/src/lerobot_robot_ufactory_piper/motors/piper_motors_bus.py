@@ -26,7 +26,11 @@ class PiperMotorsBus:
         self.port = port
         self.motors = motors
         self.calibration = calibration
-        self.piper = C_PiperInterface_V2(port)
+        # The field setup uses a generic gs_usb/candleLight adapter rather than
+        # the Piper SDK's auto-detected official adapter path.  Disabling the
+        # judge flag keeps SDK activation checks from making assumptions about
+        # the USB-CAN hardware while SocketCAN still owns bitrate/link setup.
+        self.piper = C_PiperInterface_V2(port, False)
         self._is_connected = False
         self._last_motion_ctrl: tuple[int, int, int, int] | None = None
 
@@ -235,11 +239,11 @@ class PiperMotorsBus:
         command = (ctrl_mode, move_mode, speed_percent, mit_mode)
         if self._last_motion_ctrl == command:
             return
-        motion_ctrl = getattr(self.piper, "MotionCtrl_2", None)
-        if callable(motion_ctrl):
-            motion_ctrl(*command)
+        mode_ctrl = getattr(self.piper, "ModeCtrl", None)
+        if callable(mode_ctrl):
+            mode_ctrl(*command)
         else:
-            self.piper.ModeCtrl(*command)
+            self.piper.MotionCtrl_2(*command)
         self._last_motion_ctrl = command
         time.sleep(0.02)
 
