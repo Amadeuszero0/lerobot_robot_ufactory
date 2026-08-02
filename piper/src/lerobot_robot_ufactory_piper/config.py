@@ -1,6 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Literal
-
 from lerobot.cameras import CameraConfig
 from lerobot.robots import RobotConfig
 from lerobot.teleoperators import TeleoperatorConfig
@@ -16,7 +14,7 @@ class PiperFollowerConfig(RobotConfig):
     """
 
     port: str
-    control_space: Literal["joint", "cartesian"] = "joint"
+    control_space: str = "joint"
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
 
     configure_role_on_connect: bool = True
@@ -33,7 +31,7 @@ class PiperFollowerConfig(RobotConfig):
     workspace_x: tuple[float, float] | None = None
     workspace_y: tuple[float, float] | None = None
     workspace_z: tuple[float, float] | None = None
-    move_mode: Literal["move_p", "move_l"] = "move_p"
+    move_mode: str = "move_p"
     move_speed_percent: int = 20
     gripper_effort: int = 1000
 
@@ -42,6 +40,8 @@ class PiperFollowerConfig(RobotConfig):
         self.id = "piper_follower" if self.id is None else self.id
         if self.control_space not in ("joint", "cartesian"):
             raise ValueError(f"Unsupported Piper control_space: {self.control_space}")
+        if self.move_mode not in ("move_p", "move_l"):
+            raise ValueError(f"Unsupported Piper move_mode: {self.move_mode}")
         if not 1 <= self.move_speed_percent <= 100:
             raise ValueError("move_speed_percent must be in [1, 100]")
         if self.max_cartesian_step_mm <= 0 or self.max_rotation_step_rad <= 0:
