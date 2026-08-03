@@ -1,4 +1,5 @@
 import time
+from collections import deque
 
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
@@ -10,7 +11,7 @@ from lerobot_robot_ufactory.teleoperators.pika_teleop import (
 )
 from lerobot_robot_ufactory.teleoperators.pika_teleop import PikaTeleopConfig
 
-from .config import DualPikaTeleopConfig
+from .config import DualPikaTeleopConfig, PiperPikaTeleopConfig
 
 
 # Calibrated on 2026-08-03 using Pika right/forward/up translation tests.
@@ -76,6 +77,55 @@ class _PikaTeleop(UFactoryPikaTeleop):
                     with self._data_lock:
                         self._teleop_enabled = False
                         self.begin_tracker_robot_matrix = None
+
+
+class PiperPikaTeleop(_PikaTeleop):
+    """Single-Pika profile with stable, rate-limited Piper gripper input."""
+
+    config_class = PiperPikaTeleopConfig
+    name = "piper_pika_teleop"
+
+    def __init__(self, config: PiperPikaTeleopConfig, prefix: str = "") -> None:
+        super().__init__(config, prefix=prefix)
+        self._gripper_samples: deque[float] = deque(
+            maxlen=config.gripper_filter_window
+        )
+        self._filtered_gripper: float | None = None
+
+    def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
+        super().set_teleop_enabled(enabled, obs)
+        self._gripper_samples.clear()
+        # Begin at the actual Piper gripper position supplied in ``obs`` and
+        # approach the Pika value gradually. This avoids a jump on Enter.
+        self._filtered_gripper = (
+            float(self._last_gripper_pos) if self.config.use_gripper else None
+        )
+
+    def get_action(self) -> dict[str, Any]:
+        action = super().get_action()
+        if not self.config.use_gripper or not self._teleop_enabled:
+            return action
+
+        key = f"{self.prefix}gripper.pos"
+        raw = min(1.0, max(0.0, float(action[key])))
+        self._gripper_samples.append(raw)
+        target = float(np.median(np.asarray(self._gripper_samples, dtype=float)))
+
+        if self._filtered_gripper is None:
+            self._filtered_gripper = target
+        error = target - self._filtered_gripper
+        if abs(error) > self.config.gripper_deadband:
+            delta = self.config.gripper_filter_alpha * error
+            delta = min(
+                self.config.gripper_max_step,
+                max(-self.config.gripper_max_step, delta),
+            )
+            self._filtered_gripper = min(
+                1.0, max(0.0, self._filtered_gripper + delta)
+            )
+
+        action[key] = float(self._filtered_gripper)
+        return action
 
 
 # Apply the local fixed state-monitor loop to single-Pika teleoperation.

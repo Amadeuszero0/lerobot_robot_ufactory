@@ -3,6 +3,8 @@ from lerobot.cameras import CameraConfig
 from lerobot.robots import RobotConfig
 from lerobot.teleoperators import TeleoperatorConfig
 
+from lerobot_robot_ufactory.teleoperators.pika_teleop import PikaTeleopConfig
+
 
 @RobotConfig.register_subclass("uf::piper")
 @dataclass(kw_only=True)
@@ -40,6 +42,9 @@ class PiperFollowerConfig(RobotConfig):
     gripper_effort: int = 1000
     send_gripper: bool = True
     min_command_interval_s: float = 0.0
+    gripper_command_deadband: float = 0.0
+    gripper_min_command_interval_s: float | None = None
+    gripper_keepalive_s: float | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -58,6 +63,15 @@ class PiperFollowerConfig(RobotConfig):
             raise ValueError("max_tracking_error_mm must be positive when set")
         if self.min_command_interval_s < 0:
             raise ValueError("min_command_interval_s must be non-negative")
+        if self.gripper_command_deadband < 0:
+            raise ValueError("gripper_command_deadband must be non-negative")
+        if (
+            self.gripper_min_command_interval_s is not None
+            and self.gripper_min_command_interval_s < 0
+        ):
+            raise ValueError("gripper_min_command_interval_s must be non-negative")
+        if self.gripper_keepalive_s is not None and self.gripper_keepalive_s <= 0:
+            raise ValueError("gripper_keepalive_s must be positive when set")
         for name in ("workspace_x", "workspace_y", "workspace_z"):
             bounds = getattr(self, name)
             if bounds is not None and bounds[0] >= bounds[1]:
@@ -113,3 +127,25 @@ class DualPikaTeleopConfig(TeleoperatorConfig):
         self.id = "dual_pika" if self.id is None else self.id
         if len(self.teleops) != 2:
             raise ValueError("uf::dual_pika_teleop requires exactly two Pika devices")
+
+
+@TeleoperatorConfig.register_subclass("uf::piper_pika_teleop")
+@dataclass
+class PiperPikaTeleopConfig(PikaTeleopConfig):
+    """Pika input tuned for Piper without changing the base Pika profile."""
+
+    gripper_filter_window: int = 3
+    gripper_filter_alpha: float = 0.35
+    gripper_deadband: float = 0.01
+    gripper_max_step: float = 0.08
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.gripper_filter_window < 1 or self.gripper_filter_window % 2 == 0:
+            raise ValueError("gripper_filter_window must be a positive odd number")
+        if not 0 < self.gripper_filter_alpha <= 1:
+            raise ValueError("gripper_filter_alpha must be in (0, 1]")
+        if self.gripper_deadband < 0:
+            raise ValueError("gripper_deadband must be non-negative")
+        if not 0 < self.gripper_max_step <= 1:
+            raise ValueError("gripper_max_step must be in (0, 1]")

@@ -1,0 +1,57 @@
+# Experimental MOVE P profile. The first-version configurations are unchanged.
+robot:
+  type: uf::piper
+  id: piper_follower
+  port: can0
+  control_space: cartesian
+  configure_role_on_connect: true
+  park_on_connect: false
+  park_on_disconnect: false
+  disable_torque_on_disconnect: false
+
+  # A 4 mm look-ahead gives MOVE P enough distance to interpolate instead of
+  # repeatedly completing 1 mm moves. The 0.10 s command interval remains
+  # deliberately low-frequency after the earlier high-frequency jitter test.
+  max_cartesian_step_mm: 4.0
+  max_rotation_step_rad: 0.004
+  translation_deadband_mm: 1.5
+  rotation_deadband_rad: 0.01
+  workspace_x: [50, 600]
+  workspace_y: [-500, 500]
+  workspace_z: [50, 600]
+  move_mode: move_p
+  move_speed_percent: 5
+  min_command_interval_s: 0.10
+
+  send_gripper: true
+  gripper_effort: 1000
+  gripper_command_deadband: 0.02
+  gripper_min_command_interval_s: 0.05
+  gripper_keepalive_s: 0.50
+  cameras: {}
+
+teleop:
+  type: uf::piper_pika_teleop
+  id: pika_single_smooth
+  port: /dev/ttyUSB50
+  frequency: 20
+  use_gripper: true
+  scale_xyz: 0.5
+  tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+  robot_base_pose: [300, 0, 250, 180, 0, 0]
+  gripper_filter_window: 3
+  gripper_filter_alpha: 0.35
+  gripper_deadband: 0.01
+  gripper_max_step: 0.08
+
+fps: 30
+
+dataset:
+  root: /home/admin1/lerobot_data/single_pika_piper_smooth_gripper_test01
+  repo_id: local/single_pika_piper_smooth_gripper
+  single_task: smooth single Pika to Piper MOVE P and gripper test
+  fps: 30
+  episode_time_s: 10
+  reset_time_s: 20
+  num_episodes: 1
+  push_to_hub: false

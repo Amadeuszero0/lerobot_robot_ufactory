@@ -38,7 +38,9 @@ class PiperFollower(Robot):
         )
         self.cameras: dict[str, Camera] = make_cameras_from_configs(config.cameras)
         self._camera_executor: ThreadPoolExecutor | None = None
-        self._last_command_time_s = 0.0
+        self._last_pose_command_time_s = 0.0
+        self._last_gripper_command_time_s = 0.0
+        self._last_gripper_command: float | None = None
         self._last_pose_command: tuple[float, float, float, float, float, float] | None = None
         self._locked_rotation: tuple[float, float, float] | None = None
         self._last_tracking_warning_time_s = 0.0
@@ -86,7 +88,9 @@ class PiperFollower(Robot):
     def connect(self, calibrate: bool = True) -> None:
         self._last_pose_command = None
         self._locked_rotation = None
-        self._last_command_time_s = 0.0
+        self._last_pose_command_time_s = 0.0
+        self._last_gripper_command_time_s = 0.0
+        self._last_gripper_command = None
         self.bus.connect()
         try:
             if self.config.configure_role_on_connect:
@@ -152,7 +156,6 @@ class PiperFollower(Robot):
         return observation
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
-        print("SEND_ACTION", action, flush=True)
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected")
 
@@ -268,21 +271,47 @@ class PiperFollower(Robot):
         pose_command_needed = not tracking_blocked and not (
             translation_in_deadband and rotation_in_deadband
         )
-        if now_s - self._last_command_time_s >= self.config.min_command_interval_s:
-            if pose_command_needed:
-                print("PIPER_CMD", limited, "gripper", local.get("gripper.pos"), flush=True)
-                self.bus.set_end_pose(
-                    (*limited[:3], roll_deg, pitch_deg, yaw_deg),
-                    move_mode=self.config.move_mode,
-                    speed_percent=self.config.move_speed_percent,
-                )
-                self._last_pose_command = tuple(limited)
-            if gripper_unit is not None:
+        pose_due = (
+            now_s - self._last_pose_command_time_s
+            >= self.config.min_command_interval_s
+        )
+        if pose_command_needed and pose_due:
+            self.bus.set_end_pose(
+                (*limited[:3], roll_deg, pitch_deg, yaw_deg),
+                move_mode=self.config.move_mode,
+                speed_percent=self.config.move_speed_percent,
+            )
+            self._last_pose_command = tuple(limited)
+            self._last_pose_command_time_s = now_s
+
+        if gripper_unit is not None:
+            gripper_interval_s = (
+                self.config.gripper_min_command_interval_s
+                if self.config.gripper_min_command_interval_s is not None
+                else self.config.min_command_interval_s
+            )
+            keepalive_s = (
+                self.config.gripper_keepalive_s
+                if self.config.gripper_keepalive_s is not None
+                else max(gripper_interval_s, 0.001)
+            )
+            gripper_due = (
+                now_s - self._last_gripper_command_time_s >= gripper_interval_s
+            )
+            gripper_changed = (
+                self._last_gripper_command is None
+                or abs(gripper_unit - self._last_gripper_command)
+                >= self.config.gripper_command_deadband
+            )
+            keepalive_due = (
+                now_s - self._last_gripper_command_time_s >= keepalive_s
+            )
+            if gripper_due and (gripper_changed or keepalive_due):
                 self.bus.set_gripper_percent(
                     gripper_unit * 100.0, effort=self.config.gripper_effort
                 )
-            if pose_command_needed or gripper_unit is not None:
-                self._last_command_time_s = now_s
+                self._last_gripper_command = gripper_unit
+                self._last_gripper_command_time_s = now_s
         sent = dict(zip(POSE_KEYS, limited, strict=True))
         if gripper_unit is not None:
             sent["gripper.pos"] = gripper_unit
@@ -304,6 +333,9 @@ class PiperFollower(Robot):
         )
         self._last_pose_command = None
         self._locked_rotation = None
+        self._last_pose_command_time_s = 0.0
+        self._last_gripper_command_time_s = 0.0
+        self._last_gripper_command = None
 
 
 class DualPiperFollower(Robot):
