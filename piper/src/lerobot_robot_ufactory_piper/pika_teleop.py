@@ -43,6 +43,19 @@ _PIKA_TO_PIPER_ROTATION = np.array(
     dtype=float,
 )
 
+# Piper MOVE P rotation components are expressed in the end-effector command
+# frame.  Around the verified 2026-08-03 test pose, that frame is rotated by
+# 90 degrees relative to the operator's visual up/right convention.  Keep this
+# compensation opt-in so the V2 and first-version profiles remain unchanged.
+_PIPER_TOOL_AXIS_CORRECTION = np.array(
+    [
+        [0.0, 1.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ],
+    dtype=float,
+)
+
 
 class _PikaTeleop(UFactoryPikaTeleop):
     """Local bug-fix subclass; the parent Pika implementation is left untouched."""
@@ -143,6 +156,8 @@ class PiperPikaTeleop(_PikaTeleop):
             mapped_vector = (
                 _PIKA_TO_PIPER_ROTATION @ relative_vector
             )
+            if self.config.apply_piper_tool_axis_correction:
+                mapped_vector = _PIPER_TOOL_AXIS_CORRECTION @ mapped_vector
             if self.config.rotation_dominant_axis:
                 dominant_index = int(np.argmax(np.abs(mapped_vector)))
                 dominant_vector = np.zeros(3, dtype=float)

@@ -139,6 +139,7 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     gripper_deadband: float = 0.01
     gripper_max_step: float = 0.08
     use_calibrated_rotation_mapping: bool = False
+    apply_piper_tool_axis_correction: bool = False
     rotation_dominant_axis: bool = False
     rotation_scale: float = 1.0
 
