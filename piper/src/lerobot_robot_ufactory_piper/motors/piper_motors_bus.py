@@ -42,12 +42,12 @@ class PiperMotorsBus:
     def is_calibrated(self) -> bool:
         return True
 
-    def connect(self, handshake: bool = True) -> None:
+    def connect(self, handshake: bool = True, *, piper_init: bool = True) -> None:
         if self._is_connected:
             return
         connect_port = getattr(self.piper, "ConnectPort", None)
         if callable(connect_port):
-            result = connect_port()
+            result = connect_port(piper_init=piper_init)
             if result is False:
                 raise ConnectionError(f"Failed to open CAN port {self.port!r} for {self.id}")
         self._is_connected = True
@@ -154,6 +154,14 @@ class PiperMotorsBus:
     def set_leader(self) -> None:
         self.piper.MasterSlaveConfig(0xFA, 0, 0, 0)
 
+    def emergency_stop(self) -> None:
+        """Latch the Piper software emergency stop without resetting power."""
+        self.piper.EmergencyStop(0x01)
+
+    def resume_from_emergency_stop(self) -> None:
+        """Clear a latched software emergency stop; this does not send a pose target."""
+        self.piper.EmergencyStop(0x02)
+
     def parking(self) -> None:
         self.set_joint_position(PARKING_POSITION)
         deadline = time.monotonic() + 10.0
@@ -220,7 +228,15 @@ class PiperMotorsBus:
         move_mode: str,
         speed_percent: int,
     ) -> None:
-        move_mode_code = 0x00 if move_mode == "move_p" else 0x02
+        move_mode_codes = {
+            "move_p": 0x00,
+            "move_l": 0x02,
+            "move_cpv": 0x05,
+        }
+        try:
+            move_mode_code = move_mode_codes[move_mode]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported Piper move mode: {move_mode}") from exc
         raw = [int(round(value * 1000.0)) for value in pose_mm_rpy_deg]
         self._set_motion_ctrl(0x01, move_mode_code, speed_percent, 0x00)
         self.piper.EndPoseCtrl(*raw)

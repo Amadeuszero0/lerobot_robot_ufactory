@@ -1,4 +1,6 @@
 import time
+
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -11,8 +13,44 @@ from lerobot_robot_ufactory.teleoperators.pika_teleop import PikaTeleopConfig
 from .config import DualPikaTeleopConfig
 
 
+# Calibrated on 2026-08-03 using Pika right/forward/up translation tests.
+# Piper base convention: +X forward, -Y right, +Z up.
+_ORIGINAL_PIKA_GET_ACTION = UFactoryPikaTeleop.get_action
+_PIKA_TO_PIPER_TRANSLATION = np.array(
+    [
+        [0.52718794, -0.81988978, -0.22327926],
+        [0.59104387,  0.16501522,  0.78958035],
+        [-0.61052438, -0.54822508, 0.57158486],
+    ],
+    dtype=float,
+)
+
+
 class _PikaTeleop(UFactoryPikaTeleop):
     """Local bug-fix subclass; the parent Pika implementation is left untouched."""
+
+    def get_action(self) -> dict[str, Any]:
+        action = _ORIGINAL_PIKA_GET_ACTION(self)
+
+        if not self._teleop_enabled:
+            return action
+
+        keys = (
+            f"{self.prefix}pose.x",
+            f"{self.prefix}pose.y",
+            f"{self.prefix}pose.z",
+        )
+        origin = np.asarray(self._last_robot_pose[:3], dtype=float)
+        raw_target = np.asarray([action[key] for key in keys], dtype=float)
+        corrected_target = (
+            origin
+            + _PIKA_TO_PIPER_TRANSLATION @ (raw_target - origin)
+        )
+
+        for key, value in zip(keys, corrected_target, strict=True):
+            action[key] = float(value)
+
+        return action
 
     def run(self) -> None:
         self._is_connected = True
@@ -36,6 +74,10 @@ class _PikaTeleop(UFactoryPikaTeleop):
                         self._teleop_enabled = False
                         self.begin_tracker_robot_matrix = None
 
+
+# Apply the local fixed state-monitor loop to single-Pika teleoperation.
+UFactoryPikaTeleop.run = _PikaTeleop.run
+UFactoryPikaTeleop.get_action = _PikaTeleop.get_action
 
 class DualPikaTeleop(UFBaseTeleop):
     config_class = DualPikaTeleopConfig

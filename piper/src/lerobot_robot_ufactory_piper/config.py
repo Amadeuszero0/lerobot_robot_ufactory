@@ -28,6 +28,10 @@ class PiperFollowerConfig(RobotConfig):
     # Cartesian/Pika safety limits. Translation is mm, rotation is rad.
     max_cartesian_step_mm: float = 10.0
     max_rotation_step_rad: float = 0.10
+    translation_deadband_mm: float = 0.0
+    rotation_deadband_rad: float = 0.0
+    lock_orientation: bool = False
+    max_tracking_error_mm: float | None = None
     workspace_x: tuple[float, float] | None = None
     workspace_y: tuple[float, float] | None = None
     workspace_z: tuple[float, float] | None = None
@@ -42,12 +46,16 @@ class PiperFollowerConfig(RobotConfig):
         self.id = "piper_follower" if self.id is None else self.id
         if self.control_space not in ("joint", "cartesian"):
             raise ValueError(f"Unsupported Piper control_space: {self.control_space}")
-        if self.move_mode not in ("move_p", "move_l"):
+        if self.move_mode not in ("move_p", "move_l", "move_cpv"):
             raise ValueError(f"Unsupported Piper move_mode: {self.move_mode}")
         if not 1 <= self.move_speed_percent <= 100:
             raise ValueError("move_speed_percent must be in [1, 100]")
         if self.max_cartesian_step_mm <= 0 or self.max_rotation_step_rad <= 0:
             raise ValueError("Cartesian step limits must be positive")
+        if self.translation_deadband_mm < 0 or self.rotation_deadband_rad < 0:
+            raise ValueError("Cartesian deadbands must be non-negative")
+        if self.max_tracking_error_mm is not None and self.max_tracking_error_mm <= 0:
+            raise ValueError("max_tracking_error_mm must be positive when set")
         if self.min_command_interval_s < 0:
             raise ValueError("min_command_interval_s must be non-negative")
         for name in ("workspace_x", "workspace_y", "workspace_z"):

@@ -39,6 +39,9 @@ class PiperFollower(Robot):
         self.cameras: dict[str, Camera] = make_cameras_from_configs(config.cameras)
         self._camera_executor: ThreadPoolExecutor | None = None
         self._last_command_time_s = 0.0
+        self._last_pose_command: tuple[float, float, float, float, float, float] | None = None
+        self._locked_rotation: tuple[float, float, float] | None = None
+        self._last_tracking_warning_time_s = 0.0
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
                 max_workers=len(self.cameras), thread_name_prefix=f"{prefix or 'piper'}-camera"
@@ -81,6 +84,9 @@ class PiperFollower(Robot):
         return self.bus.is_calibrated
 
     def connect(self, calibrate: bool = True) -> None:
+        self._last_pose_command = None
+        self._locked_rotation = None
+        self._last_command_time_s = 0.0
         self.bus.connect()
         try:
             if self.config.configure_role_on_connect:
@@ -146,6 +152,7 @@ class PiperFollower(Robot):
         return observation
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        print("SEND_ACTION", action, flush=True)
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected")
 
@@ -191,12 +198,66 @@ class PiperFollower(Robot):
             clamp(target[1], self.config.workspace_y),
             clamp(target[2], self.config.workspace_z),
         )
-        limited_xyz = vector_step_towards(
-            current_xyz, bounded_xyz, self.config.max_cartesian_step_mm
+
+        is_cpv = self.config.move_mode == "move_cpv"
+        if self.config.lock_orientation and self._locked_rotation is None:
+            self._locked_rotation = current_rotation
+        desired_rotation = (
+            self._locked_rotation
+            if self.config.lock_orientation and self._locked_rotation is not None
+            else target[3:6]
         )
-        limited_rotation = vector_step_towards(
-            current_rotation, target[3:6], self.config.max_rotation_step_rad
+
+        # MOVE CPV is a streaming target mode. Advance from the last command,
+        # not from lagging feedback; otherwise every cycle creates another tiny
+        # endpoint relative to a different origin. Pause target advancement if
+        # the physical arm falls too far behind the command stream.
+        command_xyz = current_xyz
+        command_rotation = current_rotation
+        tracking_blocked = False
+        if is_cpv and self._last_pose_command is not None:
+            command_xyz = self._last_pose_command[:3]
+            command_rotation = self._last_pose_command[3:6]
+            if self.config.max_tracking_error_mm is not None:
+                tracking_error_sq = sum(
+                    (current_xyz[index] - command_xyz[index]) ** 2 for index in range(3)
+                )
+                tracking_blocked = (
+                    tracking_error_sq > self.config.max_tracking_error_mm**2
+                )
+                if tracking_blocked:
+                    now_s = time.monotonic()
+                    if now_s - self._last_tracking_warning_time_s >= 1.0:
+                        logger.warning(
+                            "Piper CPV target paused: tracking error %.1f mm exceeds %.1f mm",
+                            tracking_error_sq**0.5,
+                            self.config.max_tracking_error_mm,
+                        )
+                        self._last_tracking_warning_time_s = now_s
+
+        translation_error_sq = sum(
+            (bounded_xyz[index] - command_xyz[index]) ** 2 for index in range(3)
         )
+        translation_in_deadband = (
+            translation_error_sq <= self.config.translation_deadband_mm**2
+        )
+        rotation_error_sq = sum(
+            (desired_rotation[index] - command_rotation[index]) ** 2 for index in range(3)
+        )
+        rotation_in_deadband = rotation_error_sq <= self.config.rotation_deadband_rad**2
+
+        if tracking_blocked:
+            limited_xyz = command_xyz
+            limited_rotation = command_rotation
+        else:
+            translation_target = command_xyz if translation_in_deadband else bounded_xyz
+            rotation_target = command_rotation if rotation_in_deadband else desired_rotation
+            limited_xyz = vector_step_towards(
+                command_xyz, translation_target, self.config.max_cartesian_step_mm
+            )
+            limited_rotation = vector_step_towards(
+                command_rotation, rotation_target, self.config.max_rotation_step_rad
+            )
         limited = [*limited_xyz, *limited_rotation]
 
         roll_deg, pitch_deg, yaw_deg = axis_angle_to_rpy_degrees(*limited[3:6])
@@ -204,17 +265,24 @@ class PiperFollower(Robot):
         if self.config.send_gripper:
             gripper_unit = min(1.0, max(0.0, local["gripper.pos"]))
         now_s = time.monotonic()
+        pose_command_needed = not tracking_blocked and not (
+            translation_in_deadband and rotation_in_deadband
+        )
         if now_s - self._last_command_time_s >= self.config.min_command_interval_s:
-            self.bus.set_end_pose(
-                (*limited[:3], roll_deg, pitch_deg, yaw_deg),
-                move_mode=self.config.move_mode,
-                speed_percent=self.config.move_speed_percent,
-            )
+            if pose_command_needed:
+                print("PIPER_CMD", limited, "gripper", local.get("gripper.pos"), flush=True)
+                self.bus.set_end_pose(
+                    (*limited[:3], roll_deg, pitch_deg, yaw_deg),
+                    move_mode=self.config.move_mode,
+                    speed_percent=self.config.move_speed_percent,
+                )
+                self._last_pose_command = tuple(limited)
             if gripper_unit is not None:
                 self.bus.set_gripper_percent(
                     gripper_unit * 100.0, effort=self.config.gripper_effort
                 )
-            self._last_command_time_s = now_s
+            if pose_command_needed or gripper_unit is not None:
+                self._last_command_time_s = now_s
         sent = dict(zip(POSE_KEYS, limited, strict=True))
         if gripper_unit is not None:
             sent["gripper.pos"] = gripper_unit
@@ -234,6 +302,8 @@ class PiperFollower(Robot):
             disable_torque=self.config.disable_torque_on_disconnect,
             park=self.config.park_on_disconnect,
         )
+        self._last_pose_command = None
+        self._locked_rotation = None
 
 
 class DualPiperFollower(Robot):
