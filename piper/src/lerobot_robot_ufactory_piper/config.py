@@ -138,6 +138,9 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     gripper_filter_alpha: float = 0.35
     gripper_deadband: float = 0.01
     gripper_max_step: float = 0.08
+    use_calibrated_rotation_mapping: bool = False
+    rotation_dominant_axis: bool = False
+    rotation_scale: float = 1.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -149,3 +152,5 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             raise ValueError("gripper_deadband must be non-negative")
         if not 0 < self.gripper_max_step <= 1:
             raise ValueError("gripper_max_step must be in (0, 1]")
+        if not 0 < self.rotation_scale <= 1:
+            raise ValueError("rotation_scale must be in (0, 1]")

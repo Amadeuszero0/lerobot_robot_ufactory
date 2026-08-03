@@ -6,6 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from lerobot_robot_ufactory.teleoperators.base_teleop import UFBaseTeleop
+from lerobot_robot_ufactory.devices.umi.vive_tracker.transformations import (
+    Transformations,
+)
 from lerobot_robot_ufactory.teleoperators.pika_teleop import (
     PikaTeleop as UFactoryPikaTeleop,
 )
@@ -22,6 +25,20 @@ _PIKA_TO_PIPER_TRANSLATION = np.array(
         [0.52718794, -0.81988978, -0.22327926],
         [0.59104387,  0.16501522,  0.78958035],
         [-0.61052438, -0.54822508, 0.57158486],
+    ],
+    dtype=float,
+)
+
+# Calibrated from three Pika-only gestures on 2026-08-03. The rows map the
+# original local axis-angle vector to the Piper gesture convention:
+#   Pika tip right -> -RX, Pika tip up -> +RY, clockwise roll -> +RZ.
+# The matrix is orthonormal. Experimental profiles can additionally keep only
+# the dominant mapped axis to reject natural hand-motion cross coupling.
+_PIKA_TO_PIPER_ROTATION = np.array(
+    [
+        [0.99266317, 0.11349864, -0.04168796],
+        [-0.11927281, 0.97574876, -0.18354388],
+        [0.01984499, 0.18716949, 0.98212716],
     ],
     dtype=float,
 )
@@ -103,6 +120,47 @@ class PiperPikaTeleop(_PikaTeleop):
 
     def get_action(self) -> dict[str, Any]:
         action = super().get_action()
+
+        if (
+            self._teleop_enabled
+            and self.config.use_calibrated_rotation_mapping
+        ):
+            rotation_keys = (
+                f"{self.prefix}pose.rx",
+                f"{self.prefix}pose.ry",
+                f"{self.prefix}pose.rz",
+            )
+            origin_rotation = Transformations.rxryrz_to_rotation_matrix(
+                *self._last_robot_pose[3:6]
+            )
+            target_rotation = Transformations.rxryrz_to_rotation_matrix(
+                *(float(action[key]) for key in rotation_keys)
+            )
+            relative_rotation = origin_rotation.T @ target_rotation
+            relative_vector = Transformations.rotation_matrix_to_rxryrz(
+                relative_rotation
+            )
+            mapped_vector = (
+                _PIKA_TO_PIPER_ROTATION @ relative_vector
+            )
+            if self.config.rotation_dominant_axis:
+                dominant_index = int(np.argmax(np.abs(mapped_vector)))
+                dominant_vector = np.zeros(3, dtype=float)
+                dominant_vector[dominant_index] = mapped_vector[dominant_index]
+                mapped_vector = dominant_vector
+            mapped_vector *= self.config.rotation_scale
+            corrected_rotation = (
+                origin_rotation
+                @ Transformations.rxryrz_to_rotation_matrix(*mapped_vector)
+            )
+            corrected_vector = Transformations.rotation_matrix_to_rxryrz(
+                corrected_rotation
+            )
+            for key, value in zip(
+                rotation_keys, corrected_vector, strict=True
+            ):
+                action[key] = float(value)
+
         if not self.config.use_gripper or not self._teleop_enabled:
             return action
 
