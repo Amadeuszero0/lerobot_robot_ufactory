@@ -30,7 +30,10 @@ class _PikaTeleop(UFactoryPikaTeleop):
     """Local bug-fix subclass; the parent Pika implementation is left untouched."""
 
     def get_action(self) -> dict[str, Any]:
-        action = _ORIGINAL_PIKA_GET_ACTION(self)
+        # The parent returns its mutable internal cache.  Apply the Piper axis
+        # mapping to a copy so a temporary tracker dropout cannot transform the
+        # already-transformed cache again on the next control cycle.
+        action = dict(_ORIGINAL_PIKA_GET_ACTION(self))
 
         if not self._teleop_enabled:
             return action

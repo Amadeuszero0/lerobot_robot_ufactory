@@ -178,11 +178,15 @@ class PikaTeleop(UFBaseTeleop, Thread):
             pass
 
         if self.config.use_gripper:
-            distance  = min(max(self.pika_sense.get_gripper_distance(), 0), 100)
-            if distance is not None:
-                gripper_pos = (100 - distance) / (100 - 0)
+            distance = self.pika_sense.get_gripper_distance()
+            if distance is None:
+                # Keep the last valid command through a transient serial read
+                # failure instead of snapping the Piper gripper closed/open.
+                gripper_pos = self._last_gripper_pos
             else:
-                gripper_pos = 0.0
+                distance = min(max(float(distance), 0.0), 100.0)
+                gripper_pos = (100.0 - distance) / 100.0
+                self._last_gripper_pos = gripper_pos
             self._last_action.update({f"{self.prefix}gripper.pos": gripper_pos})
         return self._last_action
 
