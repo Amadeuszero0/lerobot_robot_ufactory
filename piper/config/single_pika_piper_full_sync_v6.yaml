@@ -1,5 +1,6 @@
-# Responsive full Pika -> Piper teleoperation experiment.
-# Keeps V5 intact. Starting pose verified near XYZ [153.7, 45.3, 310.1] mm.
+# Safety-reverted V6: V5 MOVE P motion plus corrected direct gripper mapping.
+# The earlier MOVE L streaming experiment was rejected after physical testing.
+# Starting pose verified near XYZ [153.7, 45.3, 310.1] mm.
 robot:
   type: uf::piper
   id: piper_follower
@@ -10,20 +11,20 @@ robot:
   park_on_disconnect: false
   disable_torque_on_disconnect: false
 
-  max_cartesian_step_mm: 6.0
-  max_rotation_step_rad: 0.006
-  translation_deadband_mm: 1.0
+  max_cartesian_step_mm: 3.0
+  max_rotation_step_rad: 0.005
+  translation_deadband_mm: 1.5
   rotation_deadband_rad: 0.003
 
   workspace_x: [110.0, 230.0]
   workspace_y: [-20.0, 110.0]
   workspace_z: [260.0, 360.0]
 
-  # MOVE L keeps Cartesian vertical moves straighter than repeated MOVE P
-  # joint interpolation. The rate remains below the earlier jittery 20-30 Hz.
-  move_mode: move_l
-  move_speed_percent: 10
-  min_command_interval_s: 0.08
+  # Do not stream MOVE L endpoints: physical testing showed stronger jitter
+  # and one unexpected lift. Keep the previously verified MOVE P envelope.
+  move_mode: move_p
+  move_speed_percent: 5
+  min_command_interval_s: 0.10
   lock_orientation: false
 
   send_gripper: true
@@ -39,7 +40,7 @@ teleop:
   port: /dev/ttyUSB50
   frequency: 20
   use_gripper: true
-  scale_xyz: 0.60
+  scale_xyz: 0.35
   tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
   robot_base_pose: [300, 0, 250, 180, 0, 0]
 
@@ -63,7 +64,7 @@ fps: 30
 dataset:
   root: /home/admin1/lerobot_data/single_pika_piper_full_sync_v6
   repo_id: local/single_pika_piper_full_sync_v6
-  single_task: responsive single Pika full Piper teleoperation V6
+  single_task: safe MOVE P Pika teleoperation with corrected gripper mapping
   fps: 30
   episode_time_s: 10
   reset_time_s: 20
