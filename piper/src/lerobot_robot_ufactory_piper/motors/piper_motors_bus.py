@@ -241,9 +241,16 @@ class PiperMotorsBus:
         self._set_motion_ctrl(0x01, move_mode_code, speed_percent, 0x00)
         self.piper.EndPoseCtrl(*raw)
 
-    def set_gripper_percent(self, value: float, effort: int = 1000) -> None:
+    def set_gripper_percent(
+        self,
+        value: float,
+        effort: int = 1000,
+        ctrl_code: int = 0x01,
+    ) -> None:
+        if ctrl_code not in (0x01, 0x03):
+            raise ValueError("Piper gripper ctrl_code must be 0x01 or 0x03")
         raw = self._unnormalize({"gripper": value})["gripper"]
-        self.piper.GripperCtrl(abs(int(raw)), effort, 0x01, 0)
+        self.piper.GripperCtrl(abs(int(raw)), effort, ctrl_code, 0)
 
     def _set_motion_ctrl(
         self,

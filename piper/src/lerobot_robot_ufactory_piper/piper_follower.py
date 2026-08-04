@@ -308,7 +308,9 @@ class PiperFollower(Robot):
             )
             if gripper_due and (gripper_changed or keepalive_due):
                 self.bus.set_gripper_percent(
-                    gripper_unit * 100.0, effort=self.config.gripper_effort
+                    gripper_unit * 100.0,
+                    effort=self.config.gripper_effort,
+                    ctrl_code=self.config.gripper_ctrl_code,
                 )
                 self._last_gripper_command = gripper_unit
                 self._last_gripper_command_time_s = now_s

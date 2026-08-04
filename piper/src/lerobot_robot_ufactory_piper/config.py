@@ -40,6 +40,9 @@ class PiperFollowerConfig(RobotConfig):
     move_mode: str = "move_p"
     move_speed_percent: int = 20
     gripper_effort: int = 1000
+    # Piper SDK gripper control code. 0x01 enables the gripper; the official
+    # Piper LeRobot adapter uses 0x03 to enable it while clearing gripper errors.
+    gripper_ctrl_code: int = 0x01
     send_gripper: bool = True
     min_command_interval_s: float = 0.0
     gripper_command_deadband: float = 0.0
@@ -65,6 +68,8 @@ class PiperFollowerConfig(RobotConfig):
             raise ValueError("min_command_interval_s must be non-negative")
         if self.gripper_command_deadband < 0:
             raise ValueError("gripper_command_deadband must be non-negative")
+        if self.gripper_ctrl_code not in (0x01, 0x03):
+            raise ValueError("gripper_ctrl_code must be 0x01 or 0x03")
         if (
             self.gripper_min_command_interval_s is not None
             and self.gripper_min_command_interval_s < 0
