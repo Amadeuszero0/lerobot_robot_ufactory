@@ -121,10 +121,12 @@ class PiperPikaTeleop(_PikaTeleop):
             maxlen=config.gripper_filter_window
         )
         self._filtered_gripper: float | None = None
+        self._last_direct_gripper: float | None = None
 
     def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
         super().set_teleop_enabled(enabled, obs)
         self._gripper_samples.clear()
+        self._last_direct_gripper = None
         # Begin at the actual Piper gripper position supplied in ``obs`` and
         # approach the Pika value gradually. This avoids a jump on Enter.
         self._filtered_gripper = (
@@ -180,7 +182,31 @@ class PiperPikaTeleop(_PikaTeleop):
             return action
 
         key = f"{self.prefix}gripper.pos"
-        raw = min(1.0, max(0.0, float(action[key])))
+        if self.config.gripper_use_direct_distance:
+            # Pika reports physical jaw opening: approximately 0 mm closed and
+            # 100 mm open. Piper's normalized gripper command follows the same
+            # direction (0 closed, 1 open). The base UFACTORY implementation
+            # inverts this value for xArm, so read the cached SDK distance here
+            # and keep the Piper mapping explicit.
+            distance_mm = self.pika_sense.get_gripper_distance()
+            if distance_mm is not None:
+                span_mm = (
+                    self.config.gripper_distance_max_mm
+                    - self.config.gripper_distance_min_mm
+                )
+                raw = (
+                    float(distance_mm) - self.config.gripper_distance_min_mm
+                ) / span_mm
+                raw = min(1.0, max(0.0, raw))
+                self._last_direct_gripper = raw
+            elif self._last_direct_gripper is not None:
+                raw = self._last_direct_gripper
+            else:
+                # On a first-frame serial dropout, hold the actual Piper
+                # opening captured in set_teleop_enabled instead of jumping.
+                raw = min(1.0, max(0.0, float(self._last_gripper_pos)))
+        else:
+            raw = min(1.0, max(0.0, float(action[key])))
         self._gripper_samples.append(raw)
         target = float(np.median(np.asarray(self._gripper_samples, dtype=float)))
 
