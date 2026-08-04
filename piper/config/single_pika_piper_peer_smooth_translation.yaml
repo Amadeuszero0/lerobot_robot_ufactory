@@ -1,0 +1,64 @@
+# Pika -> Piper translation-only comparison profile.
+#
+# This profile borrows the timing that made the peer implementation look
+# smoother (30 Hz command loop, MOVE P, 5% speed, 3 mm step), while retaining
+# this repository's calibrated Pika translation mapping and safe workspace.
+# Wrist orientation is locked and gripper output is disabled so translation
+# smoothness can be evaluated independently of the currently offline gripper
+# and the still-unverified J5/J6 rotation mapping.
+robot:
+  type: uf::piper
+  id: piper_follower
+  port: can0
+  control_space: cartesian
+  configure_role_on_connect: true
+  park_on_connect: false
+  park_on_disconnect: false
+  disable_torque_on_disconnect: false
+
+  max_cartesian_step_mm: 3.0
+  max_rotation_step_rad: 0.006
+  translation_deadband_mm: 0.0
+  rotation_deadband_rad: 0.003
+  workspace_x: [110.0, 230.0]
+  workspace_y: [-20.0, 110.0]
+  workspace_z: [260.0, 360.0]
+  move_mode: move_p
+  move_speed_percent: 5
+  min_command_interval_s: 0.02
+  lock_orientation: true
+
+  send_gripper: false
+  gripper_effort: 1000
+  gripper_ctrl_code: 3
+  cameras: {}
+
+teleop:
+  type: uf::piper_pika_teleop
+  id: pika_peer_smooth_translation
+  port: /dev/ttyUSB50
+  # This controls the Pika button-monitor thread, not the main Piper command
+  # loop. The actual command loop is the top-level fps value below.
+  frequency: 100
+  use_gripper: false
+  scale_xyz: 0.20
+  tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+  robot_base_pose: [300, 0, 250, 180, 0, 0]
+
+  use_calibrated_rotation_mapping: true
+  apply_piper_tool_axis_correction: true
+  rotation_dominant_axis: true
+  rotation_scale: 0.40
+
+# Main observation/action/command loop. This is the important 30 Hz setting.
+fps: 30
+
+dataset:
+  root: /home/admin1/lerobot_data/single_pika_piper_peer_smooth_translation
+  repo_id: local/single_pika_piper_peer_smooth_translation
+  single_task: Compare peer-derived 30 Hz Piper translation smoothness
+  fps: 30
+  episode_time_s: 10
+  reset_time_s: 20
+  num_episodes: 1
+  push_to_hub: false
