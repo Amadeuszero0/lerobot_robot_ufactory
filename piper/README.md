@@ -1,20 +1,43 @@
-# 双臂 Pika / Piper 数据采集集成
+# piper 子项目说明（Pika / Piper 数据采集与遥操）
 
-这个目录是 `lerobot_robot_ufactory` 的**独立子项目**。它复用父项目的 Pika、相机和录制流程，加入 Piper 单臂/双臂 follower、Piper leader，以及双 Pika 组合器。父项目已有文件不需要修改。
+本目录是 `lerobot_robot_ufactory` 的**独立子项目**，复用父项目的 Pika、
+相机和录制流程，加入 Piper 单臂/双臂 follower、leader、Pika 遥操与三种
+双臂方案。**不改动父项目任何文件**。
 
-## 支持的三种方案
+## 目录结构
 
-| 方案 | 配置文件 | 动作空间 | 硬件 |
+```text
+piper/
+├── config/         # 所有运行配置（YAML）
+├── src/lerobot_robot_ufactory_piper/
+│   ├── piper_follower.py     # MOVE P 执行层（step / direct）
+│   ├── piper_joint_stream.py # 关节空间流式执行层
+│   ├── piper_kinematics.py   # 纯 numpy URDF 运动学（FK/IK）
+│   └── pika_teleop.py        # Pika 遥操（坐标映射、夹爪）
+├── tools/          # 标定 / 测量 / 校验工具
+├── urdf/           # Piper 运动学模型（纯运动学，无需 mesh）
+└── README.md       # 本说明
+```
+
+## 三种双臂方案（config/）
+
+| 方案 | 配置 | 说明 |
+|---|---|---|
+| Pika 直接采集 | `dual_pika_direct.yaml` | 双 Pika + 相机，不驱动机械臂 |
+| Pika 遥操 Piper | `dual_pika_piper.yaml` | 双 Pika 控双 Piper |
+| Piper 主从 | `dual_piper_leader_follower.yaml` | 双 leader 控双 follower |
+
+## 三种单臂遥操执行模式
+
+| 配置 | 模式 | 特点 | 建议 |
 |---|---|---|---|
-| Pika 直接采集 | `config/dual_pika_direct.yaml` | 双侧末端位姿 + 夹爪 | 2×Pika + 相机，不驱动机械臂 |
-| Pika 遥操 Piper | `config/dual_pika_piper.yaml` | 双侧末端位姿 + 夹爪 | 2×Pika + 2×Piper follower |
-| Piper 遥操 Piper | `config/dual_piper_leader_follower.yaml` | 双侧关节位置 + 夹爪 | 2×Piper leader + 2×Piper follower |
+| `single_pika_piper_movep_step.yaml` | MOVE P 阶梯限幅 | 每周期小步，保守稳定 | 慢速精细任务 |
+| `single_pika_piper_movep_direct_final.yaml` | MOVE P 直通 + 单周期大限幅 | 顺滑、跟手，**第一版终稿** | 日常采集（推荐） |
+| `single_pika_piper_joint_stream.yaml` | 关节空间流式（自研 IK） | 理论最顺，绕开固件 IK | 进阶（先做手眼标定） |
 
-数据键使用 `left.` / `right.` 前缀。例如，Pika 路径包含 `left.pose.x`、`right.pose.rz`、`left.gripper.pos`；主从臂路径包含 `left.joint1.pos` 到 `right.joint6.pos`。
+`single_pika_piper.yaml` 是基础模板（占位符）。
 
 ## 安装
-
-建议在已安装 Pika、Piper SDK 的同一个 LeRobot 0.4.3 环境里执行：
 
 ```bash
 cd /path/to/lerobot_robot_ufactory
@@ -22,83 +45,61 @@ pip install -e .
 pip install -e ./piper
 ```
 
-确认版本和入口：
+CAN 口按 Piper 官方方式配置（1 Mbps）：
 
 ```bash
-python -c "import lerobot; print(lerobot.__version__)"
-uf-piper-record --help
+sudo ip link set can0 down
+sudo ip link set can0 type can bitrate 1000000 restart-ms 100
+sudo ip link set can0 txqueuelen 1000
+sudo ip link set can0 up
 ```
 
-该子项目要求 `lerobot==0.4.3`，与父项目一致。`piper_sdk` 推荐使用 0.3.0 或更新版本。若 `wego_piper` 是本地源码安装，请确保当前环境能够 `import wego_piper`。
-
-## 第一次运行前
-
-1. 按 Piper 官方方式激活 CAN 口，波特率为 1 Mbps。四臂主从方案需要 `can_leader1`、`can_leader2`、`can_follower1`、`can_follower2` 四个不同接口。
-2. 复制所需 YAML，替换所有 `REPLACE_*`：Pika 串口、相机 `/dev/v4l/by-id/...`、任务文本等。
-3. 根据真实安装位置校准两侧 `tracker_to_robot_eef`。Pika→Piper 还必须确认 `workspace_x/y/z` 是各自 Piper **本体坐标系**下的安全范围。
-4. 静态检查配置：
+## 运行
 
 ```bash
-uf-piper-check-config config/dual_pika_piper.yaml
+# 单臂遥操（在仓库根目录）
+uf-piper-teleop --config_path=piper/config/single_pika_piper_movep_direct_final.yaml
+
+# 录制
+uf-piper-record --config_path=piper/config/dual_pika_piper.yaml
 ```
 
-5. 上真机前，先急停可达、净空、低速试运行；第一轮建议保持示例中的 5 mm / 0.05 rad 单周期限幅和 15% 速度。
+## 标定与工具（tools/）
 
-## 录制命令
+| 工具 | 用途 | 什么时候做 |
+|---|---|---|
+| `uf-vive-calibrate --force-calibrate` | 基站（灯塔）位置标定 | 首次 / 挪动基站后 |
+| `tools/calibrate_tracker_offset.py` | Pika 定位器到夹持中心的偏移（`tracker_to_robot_eef`） | 换安装方式 / 扭腕有假平移时 |
+| `tools/measure_pika_piper_mapping.py` | 测量 Pika 轴向与当前映射 | 挪动基站布局后 |
+| `tools/verify_ik_fk.py --calibrate` | joint_stream 前的手眼标定（基座+末端帧） | joint_stream 首次使用前 |
 
-在 `piper/` 目录执行：
+## 坐标映射说明
 
-```bash
-# 方案一：双 Pika 直接采
-uf-piper-record --config_path=config/dual_pika_direct.yaml
+- **平移**：原始 tracker（灯塔世界系）增量经实测矩阵
+  `_RAW_TO_PIPER_TRANSLATION` 直接映射到 Piper 基座系（前→+X、右→−Y、
+  上→+Z），由 `tools/measure_pika_piper_mapping.py` 测出。
+- **旋转**：校准矩阵 + 工具轴修正，方向经实机验证。
+- **夹爪**：Pika 开口距离（0≈闭合，100≈全开）直接映射到 Piper 夹爪。
+- `tracker_to_robot_eef` 平移偏移仍为 `[0,0,0]`；若扭腕时机械臂有明显
+  假平移，用 `calibrate_tracker_offset.py` 标定后写入。
 
-# 方案二：双 Pika -> 双 Piper
-uf-piper-record --config_path=config/dual_pika_piper.yaml
+## 安全
 
-# 方案三：双 Piper leader -> 双 Piper follower
-uf-piper-record --config_path=config/dual_piper_leader_follower.yaml
-```
+- 默认断开不卸力（保持姿态）；`disable_torque_on_disconnect: false`。
+- `movep_direct_final` 连接后会自动移动到 `startup_tcp_pose`，运行前确认
+  周围无障碍。
+- 首次测试：Pika 平移 < 5 cm、旋转 < 10°，急停保持可及。
+- direct 模式有跟随误差上限（600 mm / 3.2 rad）和单周期大限幅
+  （25 mm / 0.35 rad），防止快速动作导致固件重规划卡顿。
 
-需要续采或异步保存时，可沿用父项目参数：
+## 版本历史（简）
 
-```bash
-uf-piper-record -r -a --config_path=config/dual_piper_leader_follower.yaml
-```
+- 早期实验版本（V1~V13 等）已清理，只保留有区分度的三种模式。
+- `movep_step`：50 Hz MOVE P 阶梯限幅，1:1 映射，较快跟随。
+- `movep_direct_final`：MOVE P 直通 + 单周期大限幅（**第一版终稿**）。
+- `joint_stream`：关节空间流式（纯 numpy IK），摆脱 MOVE P 重规划抖动；
+  使用前先跑 `verify_ik_fk.py --calibrate`。
 
-录制界面快捷键沿用父项目：空格开始，左箭头重录，右箭头保存当前 episode，Esc 停止。
+## 第三方声明
 
-## 三种模式的实现说明
-
-### 1. Pika 直接采集
-
-每侧使用父项目的 `uf::mock_robot` 承载相机和 Pika 位姿，不会向机械臂发送命令。双 Pika 子遥操器的 `id` 必须与对应 mock robot 的 `teleop_id` 一致。
-
-### 2. Pika 遥操 Piper
-
-Pika 输出与父项目 XArm 路径相同的 `xyz(mm) + 轴角(rad)`。本插件在发送命令前转换为 Piper SDK `EndPoseCtrl` 所需的 `xyz(mm) + RPY(deg)`，由 Piper 固件的 MOVE P 模式完成末端位姿控制。每周期先按照当前位置做平移/旋转限幅，再做工作空间裁剪。
-
-注意：固件内部逆解在奇异位姿或不可达点可能失败。真实安装方向、末端工具偏置和安全工作空间不能从代码自动推断，必须在低速下逐臂标定。Pika 的 `gripper.pos` 为 0–1；发送给 Piper 前转换为 0–100。
-
-### 3. Piper 主从双臂
-
-leader 与 follower 都使用归一化关节值：六个关节为 -100–100，夹爪为 0–100。每侧动作以相同前缀配对。`max_relative_target` 对单周期关节目标做限幅，避免 leader/follower 初始姿态差异导致大步跳变。
-
-## 安全默认值
-
-- `park_on_connect: false`：连接时不会自动回零，避免双臂在未知环境中突然运动。
-- `park_on_disconnect: false`：退出时不自动走停车轨迹。
-- `disable_torque_on_disconnect: true`：退出时关闭 follower 扭矩。
-- Pika→Piper 默认 MOVE P 15% 速度、5 mm / 0.05 rad 单周期限幅。
-- 主从臂默认归一化关节单周期限幅 3.0。
-
-如果现场要求断开后保持姿态，需要在充分评估坠臂风险后调整 `disable_torque_on_disconnect`。不要在负载未支撑时直接关闭扭矩。
-
-## 已知边界
-
-- 当前环境没有连接真实 Pika、相机和 CAN 机械臂，因此只能完成静态、导入和配置级验证；首次硬件联调必须逐臂进行。
-- Pika→Piper 依赖 Piper SDK 的末端位姿控制，不是 MoveIt/外部 IK。不可达和奇异位姿由固件能力决定。
-- 示例相机路径和工作空间只是模板，不是现场标定值。
-- 本目录聚焦 LeRobot 双臂采集；原 Piper 项目的 Tk GUI 没有重复拷贝，仍可从 `lerobot_robot_piper-master` 单独使用。
-
-详细的文件来源和改动清单见 `MODIFICATION_RECORD.md`。
-
+见 `THIRD_PARTY_NOTICES.md`（Piper SDK / 官方 LeRobot 适配等）。

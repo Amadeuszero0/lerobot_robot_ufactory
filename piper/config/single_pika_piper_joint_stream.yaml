@@ -1,4 +1,4 @@
-# Pika -> Piper V15: joint-space streaming (official-style motion layer).
+# Pika -> Piper joint_stream: joint-space streaming (official-style motion layer; was V15).
 #
 # NEW motion mode: the Cartesian Pika target is solved to joints with
 # pinocchio IK on our side and streamed through the SDK joint control mode
@@ -49,7 +49,7 @@ robot:
 
 teleop:
   type: uf::piper_pika_teleop
-  id: pika_piper_joint_stream_v15
+  id: pika_piper_joint_stream
   port: /dev/ttyUSB50
   frequency: 100
   use_gripper: true
@@ -76,9 +76,9 @@ teleop:
 fps: 50
 
 dataset:
-  root: /home/admin1/lerobot_data/single_pika_piper_joint_stream_v15
-  repo_id: local/single_pika_piper_joint_stream_v15
-  single_task: Pika to Piper joint-space streaming V15
+  root: /home/admin1/lerobot_data/single_pika_piper_joint_stream
+  repo_id: local/single_pika_piper_joint_stream
+  single_task: Pika to Piper joint-space streaming
   fps: 50
   episode_time_s: 10
   reset_time_s: 20
