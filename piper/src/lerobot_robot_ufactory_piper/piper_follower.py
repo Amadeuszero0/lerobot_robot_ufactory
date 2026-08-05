@@ -125,7 +125,10 @@ class PiperFollower(Robot):
             for camera in self.cameras.values():
                 if camera.is_connected:
                     camera.disconnect()
-            self.bus.disconnect(disable_torque=True, park=False)
+            self.bus.disconnect(
+                disable_torque=self.config.disable_torque_on_disconnect,
+                park=False,
+            )
             raise
         logger.info("Connected Piper follower %s on %s", self.id, self.config.port)
 
@@ -164,8 +167,8 @@ class PiperFollower(Robot):
         translation_tolerance_mm: float = 2.0,
         rotation_tolerance_rad: float = 0.02,
     ) -> None:
-        if not self.is_connected:
-            raise DeviceNotConnectedError(f"{self} is not connected")
+        if not self.bus.is_connected:
+            raise DeviceNotConnectedError(f"{self} CAN bus is not connected")
         if self.config.control_space != "cartesian":
             raise RuntimeError("startup_tcp_pose requires cartesian control")
         target = tuple(float(v) for v in pose_mm_rpy_deg)
