@@ -29,7 +29,21 @@ _PIKA_TO_PIPER_TRANSLATION = np.array(
     dtype=float,
 )
 
-# Calibrated from three Pika-only gestures on 2026-08-03. The rows map the
+# Calibrated from three Pika-only gestures on 2026-08-03.
+# Measured 2026-08-05 with piper/tools/measure_pika_piper_mapping.py. Maps raw
+# tracker deltas in the lighthouse/world frame directly to the Piper base
+# frame: Pika forward -> Piper +X, Pika right -> Piper -Y, Pika up -> +Z.
+# Kabsch fit error was ~1 degree. This replaces the old fitted matrix, which
+# mapped forward to (0.52, -0.74, -0.43) instead of +X.
+_RAW_TO_PIPER_TRANSLATION = np.array(
+    [
+        [0.908157378, -0.375801932, -0.184453476],
+        [0.381913658, 0.924194400, -0.002582414],
+        [0.171441346, -0.068100063, 0.982837854],
+    ],
+    dtype=float,
+)
+# The rows map the
 # original local axis-angle vector to the Piper gesture convention:
 #   Pika tip right -> -RX, Pika tip up -> +RY, clockwise roll -> +RZ.
 # The matrix is orthonormal. Experimental profiles can additionally keep only
@@ -76,15 +90,26 @@ class _PikaTeleop(UFactoryPikaTeleop):
         )
         origin = np.asarray(self._last_robot_pose[:3], dtype=float)
         raw_target = np.asarray([action[key] for key in keys], dtype=float)
-        corrected_target = (
-            origin
-            + _PIKA_TO_PIPER_TRANSLATION @ (raw_target - origin)
-        )
+        corrected_target = self._translation_target(raw_target, origin)
 
         for key, value in zip(keys, corrected_target, strict=True):
             action[key] = float(value)
 
         return action
+
+    def _translation_target(
+        self, raw_target: np.ndarray, origin: np.ndarray
+    ) -> np.ndarray:
+        if not getattr(self.config, "use_raw_translation_mapping", False):
+            return origin + _PIKA_TO_PIPER_TRANSLATION @ (raw_target - origin)
+        pose = self.pika_sense.get_pose(self.pika_device.pika_tracker_device)
+        if pose is None:
+            return origin + _PIKA_TO_PIPER_TRANSLATION @ (raw_target - origin)
+        raw_m = np.asarray(pose.position, dtype=float)
+        if not hasattr(self, "_raw_start_xyz") or self._raw_start_xyz is None:
+            self._raw_start_xyz = raw_m.copy()
+        delta_mm = (raw_m - self._raw_start_xyz) * 1000.0 * self.config.scale_xyz
+        return origin + _RAW_TO_PIPER_TRANSLATION @ delta_mm
 
     def run(self) -> None:
         self._is_connected = True

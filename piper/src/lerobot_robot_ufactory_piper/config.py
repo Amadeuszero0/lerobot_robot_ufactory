@@ -151,6 +151,7 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     rotation_dominant_axis: bool = False
     rotation_scale: float = 1.0
     rotation_filter_alpha: float = 1.0
+    use_raw_translation_mapping: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
