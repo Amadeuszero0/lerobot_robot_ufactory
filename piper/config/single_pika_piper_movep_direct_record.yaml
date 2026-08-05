@@ -39,10 +39,10 @@ robot:
   gripper_keepalive_s: 0.20
   cameras:
     realsense:
-      # D435i 的 UVC 节点拒绝 OpenCV 手动设置分辨率，改用官方 SDK 相机。
-      # 需要：pip install pyrealsense2（否则 type: realsense 无法注册）。
-      type: realsense
-      serial_number: "346122070530"
+      # 自研相机类型：打开 /dev/video12（D435i 彩色节点），不强制设置
+      # 分辨率（设备默认 640x480@30），无需 pyrealsense2。
+      type: uf::opencv_default
+      index_or_path: /dev/video12
       width: 640
       height: 480
       fps: 30

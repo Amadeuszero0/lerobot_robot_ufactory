@@ -20,6 +20,7 @@ from .piper_follower import DualPiperFollower, PiperFollower
 from .piper_leader import DualPiperLeader, PiperLeader
 from .pika_teleop import DualPikaTeleop, PiperPikaTeleop
 from .piper_joint_stream import PiperJointStreamConfig, PiperJointStreamFollower
+from .cameras import OpenCVDefaultCamera, OpenCVDefaultCameraConfig
 
 __all__ = [
     "DualPikaTeleop",
@@ -36,4 +37,6 @@ __all__ = [
     "PiperPikaTeleopConfig",
     "PiperJointStreamFollower",
     "PiperJointStreamConfig",
+    "OpenCVDefaultCamera",
+    "OpenCVDefaultCameraConfig",
 ]
