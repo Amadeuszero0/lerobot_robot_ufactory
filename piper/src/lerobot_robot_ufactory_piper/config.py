@@ -150,6 +150,7 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     apply_piper_tool_axis_correction: bool = False
     rotation_dominant_axis: bool = False
     rotation_scale: float = 1.0
+    rotation_filter_alpha: float = 1.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -168,3 +169,5 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             )
         if not 0 < self.rotation_scale <= 1:
             raise ValueError("rotation_scale must be in (0, 1]")
+        if not 0 < self.rotation_filter_alpha <= 1:
+            raise ValueError("rotation_filter_alpha must be in (0, 1]")

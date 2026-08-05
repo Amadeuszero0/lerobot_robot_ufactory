@@ -122,11 +122,13 @@ class PiperPikaTeleop(_PikaTeleop):
         )
         self._filtered_gripper: float | None = None
         self._last_direct_gripper: float | None = None
+        self._filtered_rotation_delta: np.ndarray | None = None
 
     def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
         super().set_teleop_enabled(enabled, obs)
         self._gripper_samples.clear()
         self._last_direct_gripper = None
+        self._filtered_rotation_delta = None
         # Begin at the actual Piper gripper position supplied in ``obs`` and
         # approach the Pika value gradually. This avoids a jump on Enter.
         self._filtered_gripper = (
@@ -165,6 +167,16 @@ class PiperPikaTeleop(_PikaTeleop):
                 dominant_vector = np.zeros(3, dtype=float)
                 dominant_vector[dominant_index] = mapped_vector[dominant_index]
                 mapped_vector = dominant_vector
+            if self.config.rotation_filter_alpha < 1.0:
+                if self._filtered_rotation_delta is None:
+                    self._filtered_rotation_delta = mapped_vector.copy()
+                else:
+                    alpha = self.config.rotation_filter_alpha
+                    self._filtered_rotation_delta = (
+                        alpha * mapped_vector
+                        + (1.0 - alpha) * self._filtered_rotation_delta
+                    )
+                mapped_vector = self._filtered_rotation_delta
             mapped_vector *= self.config.rotation_scale
             corrected_rotation = (
                 origin_rotation
