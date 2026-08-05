@@ -99,12 +99,17 @@ def _sample(sense, dev, n, interval_s, timeout_s) -> tuple[np.ndarray, np.ndarra
     if not positions:
         raise RuntimeError("没有读到 tracker 位姿，检查 Pika 串口和定位")
     mean_pos = np.mean(positions, axis=0)
-    mean_rot = Transformations.quaternion_to_rotation_matrix(_avg_quaternion(quats))
-    return mean_pos, mean_rot
+    mean_q = _avg_quaternion(quats)
+    if mean_q.shape != (4,):
+        raise RuntimeError(
+            f"SDK 返回的旋转不是四元数 (长度 {mean_q.shape[0]}: {mean_q.tolist()})，"
+            "请把这一行贴给 Codex"
+        )
+    return mean_pos, mean_q
 
 
 def _parent_robot_target(
-    start_pos, start_rot, end_pos, end_rot, scale_xyz
+    start_pos, start_q, end_pos, end_q, scale_xyz
 ) -> tuple[np.ndarray, np.ndarray]:
     """Replicate PikaTeleop.get_action (parent): absolute robot target."""
     t2r = Transformations.xyzrpy_to_rotation_matrix(
@@ -118,7 +123,7 @@ def _parent_robot_target(
             start_pos[0] * 1000.0 * scale_xyz,
             start_pos[1] * 1000.0 * scale_xyz,
             start_pos[2] * 1000.0 * scale_xyz,
-            start_rot,
+            start_q,
         )
         @ t2r
     )
@@ -127,7 +132,7 @@ def _parent_robot_target(
             end_pos[0] * 1000.0 * scale_xyz,
             end_pos[1] * 1000.0 * scale_xyz,
             end_pos[2] * 1000.0 * scale_xyz,
-            end_rot,
+            end_q,
         )
         @ t2r
     )
@@ -185,16 +190,18 @@ def main() -> None:
     results = []
     for idx, (gesture, expected) in enumerate(gestures, start=1):
         input(f"{idx}. 回到中立位姿，按 Enter 采样起点...")
-        start_pos, start_rot = _sample(
+        start_pos, start_q = _sample(
             sense, dev, args.samples, args.interval, args.timeout
         )
         input(f"    然后 {gesture}，保持住，按 Enter 采样终点...")
-        end_pos, end_rot = _sample(
+        end_pos, end_q = _sample(
             sense, dev, args.samples, args.interval, args.timeout
         )
 
         raw_delta = end_pos - start_pos
         raw_dir = _unit(raw_delta)
+        start_rot = Transformations.quaternion_to_rotation_matrix(start_q)
+        end_rot = Transformations.quaternion_to_rotation_matrix(end_q)
         print(f"\n===== 动作 {idx}: {gesture} =====")
         print(f"预期: {expected}")
         print(f"原始 tracker 位移 (m): {_fmt_vec(raw_delta)}")
@@ -202,7 +209,7 @@ def main() -> None:
             print(f"原始位移方向 (单位向量): {_fmt_vec(raw_dir)}")
 
         parent_xyz, parent_rot = _parent_robot_target(
-            start_pos, start_rot, end_pos, end_rot, args.scale
+            start_pos, start_q, end_pos, end_q, args.scale
         )
         cmd_xyz, cmd_rot = _piper_plugin_command(
             parent_xyz, parent_rot, args.scale, args.rotation_scale
