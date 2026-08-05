@@ -39,9 +39,9 @@ robot:
   gripper_keepalive_s: 0.20
   cameras:
     realsense:
-      # 自研相机类型：打开 /dev/video12（D435i 彩色节点），不强制设置
-      # 分辨率（设备默认 640x480@30），无需 pyrealsense2。
-      type: uf::opencv_default
+      # D435i UVC 节点拒绝手动分辨率设置；piper 插件已给 opencv 相机打上
+      # "宽容补丁"（cameras.py）：设置失败时继续用设备默认 640x480@30。
+      type: opencv
       index_or_path: /dev/video12
       width: 640
       height: 480

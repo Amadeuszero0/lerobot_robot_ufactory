@@ -1,78 +1,55 @@
-"""OpenCV camera that does NOT force width/height/fps/fourcc on the device.
+"""Lenient LeRobot OpenCV camera support.
 
-The Intel D435i UVC color node rejects manual resolution settings, which
-makes LeRobot's stock ``opencv`` camera fail at ``_configure_capture_settings``
-and prevents the ``realsense`` type from registering without pyrealsense2.
-This camera opens the node and reads frames at the device defaults (the
-D435i color node yields 640x480@30 out of the box), while still exposing the
-configured width/height so LeRobot's robot validation is satisfied.
+The Intel D435i UVC color node rejects manual width/height/fps settings, so
+LeRobot's stock ``opencv`` camera aborts in ``_configure_capture_settings``.
+This module monkey-patches that method: if the device refuses the settings,
+we log a warning and continue with the device defaults (the D435i color node
+delivers 640x480@30 out of the box). No extra dependency is required.
+
+Importing this module applies the patch; the plugin's __init__.py does that.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, kw_only
-from typing import Any
+import logging
 
-import cv2
-import numpy as np
+logger = logging.getLogger(__name__)
 
-from lerobot.cameras import Camera, CameraConfig
-from lerobot.utils.errors import DeviceNotConnectedError
+_PATCH_MARK = "_uf_lenient_opencv_patch"
 
 
-@CameraConfig.register_subclass("uf::opencv_default")
-@dataclass(kw_only=True)
-class OpenCVDefaultCameraConfig(CameraConfig):
-    index_or_path: str
-    width: int = 640
-    height: int = 480
-    fps: int = 30
+def _install_lenient_opencv_camera() -> None:
+    try:
+        from lerobot.cameras.opencv import camera_opencv as cam_mod
+    except Exception:
+        logger.debug("lerobot opencv camera module not found; patch skipped")
+        return
 
+    cls = getattr(cam_mod, "OpenCVCamera", None)
+    if cls is None:
+        logger.debug("OpenCVCamera not found; patch skipped")
+        return
 
-class OpenCVDefaultCamera(Camera):
-    config_class = OpenCVDefaultCameraConfig
-    name = "opencv_default"
+    original = getattr(cls, "_configure_capture_settings", None)
+    if original is None or getattr(original, _PATCH_MARK, False):
+        return
 
-    def __init__(self, config: OpenCVDefaultCameraConfig) -> None:
-        super().__init__(config)
-        self.config = config
-        self.cap: cv2.VideoCapture | None = None
-
-    @property
-    def height(self) -> int:
-        return self.config.height
-
-    @property
-    def width(self) -> int:
-        return self.config.width
-
-    def connect(self) -> None:
-        if self.cap is not None:
-            return
-        cap = cv2.VideoCapture(self.config.index_or_path, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            raise ConnectionError(
-                f"Failed to open OpenCVDefaultCamera({self.config.index_or_path})"
+    def _lenient_configure(self) -> None:
+        try:
+            original(self)
+        except Exception as exc:  # noqa: BLE001 - keep recording alive
+            logger.warning(
+                "OpenCVCamera(%s) could not apply all capture settings (%s); "
+                "continuing with device defaults",
+                getattr(self, "index_or_path", "?"),
+                exc,
             )
-        self.cap = cap
 
-    def read(self) -> np.ndarray:
-        if self.cap is None:
-            raise DeviceNotConnectedError(f"{self} is not connected")
-        ok, frame = self.cap.read()
-        if not ok or frame is None:
-            raise RuntimeError(
-                f"Failed to read frame from {self.config.index_or_path}"
-            )
-        return frame
-
-    def async_read(self) -> np.ndarray:
-        return self.read()
-
-    def disconnect(self) -> None:
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
+    setattr(_lenient_configure, _PATCH_MARK, True)
+    cls._configure_capture_settings = _lenient_configure
+    logger.debug("Applied lenient OpenCV capture-settings patch")
 
 
-__all__ = ["OpenCVDefaultCamera", "OpenCVDefaultCameraConfig"]
+_install_lenient_opencv_camera()
+
+__all__: list[str] = []
