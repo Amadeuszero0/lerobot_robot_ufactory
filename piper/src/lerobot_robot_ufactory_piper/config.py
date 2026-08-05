@@ -33,6 +33,16 @@ class PiperFollowerConfig(RobotConfig):
     translation_deadband_mm: float = 0.0
     rotation_deadband_rad: float = 0.0
     lock_orientation: bool = False
+    # Ported from the senior lerobot_real fork: 'step' keeps the original
+    # per-cycle limiter; 'direct' sends the full target with following-error
+    # guards (smoother MOVE P tracking).
+    cartesian_command_mode: str = "step"
+    max_cartesian_following_error_mm: float = 600.0
+    max_rotation_following_error_rad: float = 3.2
+    startup_tcp_pose: tuple[float, ...] | None = None
+    startup_move_timeout_s: float = 30.0
+    hold_position_on_disconnect: bool = False
+    feedback_startup_timeout_s: float = 5.0
     max_tracking_error_mm: float | None = None
     workspace_x: tuple[float, float] | None = None
     workspace_y: tuple[float, float] | None = None
@@ -81,6 +91,14 @@ class PiperFollowerConfig(RobotConfig):
             bounds = getattr(self, name)
             if bounds is not None and bounds[0] >= bounds[1]:
                 raise ValueError(f"{name} must be ordered as (min, max)")
+        if self.cartesian_command_mode not in ("step", "direct"):
+            raise ValueError("cartesian_command_mode must be 'step' or 'direct'")
+        if self.max_cartesian_following_error_mm <= 0 or self.max_rotation_following_error_rad <= 0:
+            raise ValueError("following error limits must be positive")
+        if self.startup_tcp_pose is not None and len(self.startup_tcp_pose) != 6:
+            raise ValueError("startup_tcp_pose must contain six values")
+        if self.startup_move_timeout_s <= 0:
+            raise ValueError("startup_move_timeout_s must be positive")
 
 
 @RobotConfig.register_subclass("uf::dual_piper")

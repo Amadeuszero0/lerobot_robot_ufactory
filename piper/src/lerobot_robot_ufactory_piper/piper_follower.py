@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import cached_property
@@ -43,6 +44,7 @@ class PiperFollower(Robot):
         self._last_gripper_command: float | None = None
         self._last_pose_command: tuple[float, float, float, float, float, float] | None = None
         self._locked_rotation: tuple[float, float, float] | None = None
+        self._force_step_cartesian = False
         self._last_tracking_warning_time_s = 0.0
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
@@ -97,11 +99,17 @@ class PiperFollower(Robot):
                 self.bus.set_follower()
                 time.sleep(0.1)
             self.bus.enable_torque()
+            self._wait_for_feedback()
             # This integration uses the Piper's fixed factory ranges, so it is
             # normally already calibrated. Avoid moving the gripper merely
             # because LeRobot calls connect(calibrate=True) by default.
             if calibrate and not self.is_calibrated:
                 self.calibrate()
+            if getattr(self.config, "startup_tcp_pose", None) is not None:
+                self.move_to_tcp_pose(
+                    tuple(self.config.startup_tcp_pose),
+                    timeout_s=self.config.startup_move_timeout_s,
+                )
             if self.config.park_on_connect:
                 self.bus.parking()
             for camera in self.cameras.values():
@@ -127,6 +135,68 @@ class PiperFollower(Robot):
     def configure(self) -> None:
         # Role and motion mode are refreshed on connect/send_action respectively.
         return None
+
+
+    def _wait_for_feedback(self) -> None:
+        """Wait until the SDK returns a finite, non-zero end pose."""
+        deadline = time.monotonic() + self.config.feedback_startup_timeout_s
+        while time.monotonic() < deadline:
+            try:
+                x, y, z, roll, pitch, yaw = self.bus.get_end_pose()
+                if (
+                    all(math.isfinite(v) for v in (x, y, z, roll, pitch, yaw))
+                    and (x != 0.0 or y != 0.0 or z != 0.0)
+                ):
+                    return
+            except Exception:
+                pass
+            time.sleep(0.05)
+        raise RuntimeError(
+            f"Piper {self.id} did not return valid feedback within "
+            f"{self.config.feedback_startup_timeout_s:.1f}s"
+        )
+
+    def move_to_tcp_pose(
+        self,
+        pose_mm_rpy_deg: tuple[float, ...] | list[float],
+        *,
+        timeout_s: float = 30.0,
+        translation_tolerance_mm: float = 2.0,
+        rotation_tolerance_rad: float = 0.02,
+    ) -> None:
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected")
+        if self.config.control_space != "cartesian":
+            raise RuntimeError("startup_tcp_pose requires cartesian control")
+        target = tuple(float(v) for v in pose_mm_rpy_deg)
+        if len(target) != 6 or not all(math.isfinite(v) for v in target):
+            raise ValueError("startup_tcp_pose must contain six finite values")
+        target_rotation = rpy_degrees_to_axis_angle(*target[3:6])
+        action = dict(zip(POSE_KEYS, (*target[:3], *target_rotation), strict=True))
+        action["gripper.pos"] = self.bus.get_joint_position()["gripper"] / 100.0
+        deadline = time.monotonic() + timeout_s
+        previous_force = self._force_step_cartesian
+        self._force_step_cartesian = True
+        try:
+            while True:
+                current = self.bus.get_end_pose()
+                current_rotation = rpy_degrees_to_axis_angle(*current[3:6])
+                translation_error = math.dist(current[:3], target[:3])
+                angular_error = math.dist(current_rotation, target_rotation)
+                if (
+                    translation_error <= translation_tolerance_mm
+                    and angular_error <= rotation_tolerance_rad
+                ):
+                    return
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"Piper {self.id} did not reach startup pose in {timeout_s:.1f}s "
+                        f"(translation error {translation_error:.2f} mm)"
+                    )
+                self.send_action(action)
+                time.sleep(0.02)
+        finally:
+            self._force_step_cartesian = previous_force
 
     def setup_motors(self) -> None:
         self.bus.connect()
@@ -249,7 +319,26 @@ class PiperFollower(Robot):
         )
         rotation_in_deadband = rotation_error_sq <= self.config.rotation_deadband_rad**2
 
-        if tracking_blocked:
+        direct_command = (
+            getattr(self.config, "cartesian_command_mode", "step") == "direct"
+            and not getattr(self, "_force_step_cartesian", False)
+        )
+        if direct_command and not (translation_in_deadband and rotation_in_deadband):
+            translation_error = math.dist(current_xyz, bounded_xyz)
+            angular_error = math.dist(current_rotation, desired_rotation)
+            if translation_error > self.config.max_cartesian_following_error_mm:
+                raise RuntimeError(
+                    f"Piper {self.id} direct target {translation_error:.1f} mm away "
+                    f"(limit {self.config.max_cartesian_following_error_mm:.1f} mm)"
+                )
+            if angular_error > self.config.max_rotation_following_error_rad:
+                raise RuntimeError(
+                    f"Piper {self.id} direct rotation target {angular_error:.3f} rad away "
+                    f"(limit {self.config.max_rotation_following_error_rad:.3f} rad)"
+                )
+            limited_xyz = bounded_xyz
+            limited_rotation = desired_rotation
+        elif tracking_blocked:
             limited_xyz = command_xyz
             limited_rotation = command_rotation
         else:
@@ -323,6 +412,20 @@ class PiperFollower(Robot):
         self.bus.parking()
 
     def disconnect(self) -> None:
+        if (
+            self.bus.is_connected
+            and self.config.control_space == "cartesian"
+            and not self.config.disable_torque_on_disconnect
+            and getattr(self.config, "hold_position_on_disconnect", False)
+        ):
+            pose = self.bus.get_end_pose()
+            if all(math.isfinite(v) for v in pose):
+                self.bus.set_end_pose(
+                    pose,
+                    move_mode=self.config.move_mode,
+                    speed_percent=self.config.move_speed_percent,
+                )
+                time.sleep(0.05)
         for camera in self.cameras.values():
             if camera.is_connected:
                 camera.disconnect()
