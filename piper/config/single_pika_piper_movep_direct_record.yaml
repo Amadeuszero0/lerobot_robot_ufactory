@@ -72,8 +72,6 @@ teleop:
   gripper_deadband: 0.005
   gripper_max_step: 0.15
 
-fps: 30
-
 dataset:
   root: /home/admin1/lerobot_data/pika_piper_movep_direct_record_test
   repo_id: local/pika_piper_movep_direct_record_test
