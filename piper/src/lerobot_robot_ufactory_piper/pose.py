@@ -2,6 +2,8 @@
 
 import math
 
+import numpy as np
+
 from lerobot_robot_ufactory.devices.umi.vive_tracker.transformations import Transformations
 
 
@@ -19,6 +21,18 @@ def rpy_degrees_to_axis_angle(
     )
     result = Transformations.rotation_matrix_to_rxryrz(rotation)
     return tuple(float(value) for value in result)
+
+
+def rotation_distance(
+    rxryrz_a: tuple[float, float, float],
+    rxryrz_b: tuple[float, float, float],
+) -> float:
+    """True angular distance (rad) between two axis-angle rotations."""
+    ra = Transformations.rxryrz_to_rotation_matrix(*rxryrz_a)
+    rb = Transformations.rxryrz_to_rotation_matrix(*rxryrz_b)
+    d = ra.T @ rb
+    cos_theta = min(1.0, max(-1.0, (float(np.trace(d)) - 1.0) / 2.0))
+    return math.acos(cos_theta)
 
 
 def clamp(value: float, bounds: tuple[float, float] | None) -> float:

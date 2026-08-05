@@ -14,7 +14,7 @@ from lerobot.utils.errors import DeviceNotConnectedError
 from .config import DualPiperFollowerConfig, PiperFollowerConfig
 from .motors import PiperMotorsBus
 from .motors.tables import CALIBRATION, MOTORS
-from .pose import axis_angle_to_rpy_degrees, clamp, rpy_degrees_to_axis_angle, vector_step_towards
+from .pose import axis_angle_to_rpy_degrees, clamp, rotation_distance, rpy_degrees_to_axis_angle, vector_step_towards
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -185,7 +185,7 @@ class PiperFollower(Robot):
                 current = self.bus.get_end_pose()
                 current_rotation = rpy_degrees_to_axis_angle(*current[3:6])
                 translation_error = math.dist(current[:3], target[:3])
-                angular_error = math.dist(current_rotation, target_rotation)
+                angular_error = rotation_distance(current_rotation, target_rotation)
                 if (
                     translation_error <= translation_tolerance_mm
                     and angular_error <= rotation_tolerance_rad
@@ -328,7 +328,7 @@ class PiperFollower(Robot):
         )
         if direct_command and not (translation_in_deadband and rotation_in_deadband):
             translation_error = math.dist(current_xyz, bounded_xyz)
-            angular_error = math.dist(current_rotation, desired_rotation)
+            angular_error = rotation_distance(current_rotation, desired_rotation)
             if translation_error > self.config.max_cartesian_following_error_mm:
                 raise RuntimeError(
                     f"Piper {self.id} direct target {translation_error:.1f} mm away "
