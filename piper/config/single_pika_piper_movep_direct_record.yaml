@@ -1,0 +1,89 @@
+# Pika -> Piper 录制测试配置：movep_direct_final + Intel D435i RGB。
+# 只采集 Intel 相机 RGB 和 Piper 位姿/夹爪数据（Piper 上未装腕部相机）。
+# 如需换回普通 USB 相机，把 cameras.realsense 换成 opencv 类型：
+#   type: opencv
+#   index_or_path: /dev/v4l/by-id/usb-Intel_R__RealSense_TM__Depth_Camera_435i_...-video-index0
+#   width: 640
+#   height: 480
+#   fps: 30
+#   fourcc: MJPG
+robot:
+  type: uf::piper
+  id: piper_follower
+  port: can0
+  control_space: cartesian
+  configure_role_on_connect: true
+  park_on_connect: false
+  park_on_disconnect: false
+  disable_torque_on_disconnect: false
+  hold_position_on_disconnect: true
+  feedback_startup_timeout_s: 5.0
+
+  cartesian_command_mode: direct
+  max_cartesian_step_mm: 6.0
+  max_rotation_step_rad: 0.10
+  max_cartesian_following_error_mm: 600.0
+  max_rotation_following_error_rad: 3.2
+  direct_max_step_mm: 25.0
+  direct_max_step_rad: 0.35
+  translation_deadband_mm: 0.5
+  rotation_deadband_rad: 0.004
+  workspace_x: [50.0, 600.0]
+  workspace_y: [-500.0, 500.0]
+  workspace_z: [50.0, 600.0]
+  move_mode: move_p
+  move_speed_percent: 30
+  startup_tcp_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
+  startup_move_timeout_s: 30
+
+  send_gripper: true
+  gripper_effort: 1000
+  gripper_ctrl_code: 3
+  gripper_command_deadband: 0.005
+  gripper_min_command_interval_s: 0.03
+  gripper_keepalive_s: 0.20
+  cameras:
+    realsense:
+      type: realsense
+      serial_number: "346122070530"
+      width: 640
+      height: 480
+      fps: 30
+
+teleop:
+  type: uf::piper_pika_teleop
+  id: pika_piper_movep_direct_record
+  port: /dev/ttyUSB50
+  frequency: 100
+  use_gripper: true
+  scale_xyz: 1.0
+  tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+  robot_base_pose: [300, 0, 250, 180, 0, 0]
+
+  use_raw_translation_mapping: true
+
+  use_calibrated_rotation_mapping: true
+  apply_piper_tool_axis_correction: true
+  rotation_dominant_axis: false
+  rotation_scale: 1.0
+  rotation_filter_alpha: 0.4
+
+  gripper_use_direct_distance: true
+  gripper_distance_min_mm: 0.4
+  gripper_distance_max_mm: 98.1
+  gripper_filter_window: 3
+  gripper_filter_alpha: 0.75
+  gripper_deadband: 0.005
+  gripper_max_step: 0.15
+
+fps: 30
+
+dataset:
+  root: /home/admin1/lerobot_data/pika_piper_movep_direct_record_test
+  repo_id: local/pika_piper_movep_direct_record_test
+  single_task: Move the object with the Piper arm
+  fps: 30
+  episode_time_s: 30
+  reset_time_s: 10
+  num_episodes: 50
+  push_to_hub: false
