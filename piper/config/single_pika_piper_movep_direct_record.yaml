@@ -41,12 +41,9 @@ robot:
     realsense:
       type: opencv
       # 2026-08-05 实测 by-id：D435i video-index0 -> /dev/video12（彩色），
-      # D405 占 video0~5。直接使用 video12 避免软链/枚举问题。
+      # D405 占 video0~5。D435i 的 UVC 节点拒绝手动设置分辨率/帧率，
+      # 所以不写 width/height/fps/fourcc，用设备默认（640x480@30）。
       index_or_path: /dev/video12
-      width: 640
-      height: 480
-      fps: 30
-      fourcc: MJPG
 
 teleop:
   type: uf::piper_pika_teleop
