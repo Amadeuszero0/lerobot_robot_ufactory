@@ -40,7 +40,9 @@ robot:
   cameras:
     realsense:
       type: opencv
-      index_or_path: /dev/v4l/by-id/usb-Intel_R__RealSense_TM__Depth_Camera_435i_Intel_R__RealSense_TM__Depth_Camera_435i-video-index0
+      # 2026-08-05 实测：by-id video-index0 已不对应 RGB；video2 是
+      # D435i 的 640x480 彩色节点（用 ls -l /dev/v4l/by-id/ 确认）。
+      index_or_path: /dev/video2
       width: 640
       height: 480
       fps: 30
