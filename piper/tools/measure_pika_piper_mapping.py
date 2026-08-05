@@ -160,6 +160,19 @@ def _piper_plugin_command(
     return corrected_xyz - origin_xyz, mapped
 
 
+def _kabsch_matrix(src_dirs, dst_dirs) -> np.ndarray:
+    """Best orthonormal rotation mapping src -> dst (Kabsch)."""
+    H = np.zeros((3, 3), dtype=float)
+    for src, dst in zip(src_dirs, dst_dirs):
+        H += np.outer(dst, src)
+    U, _, Vt = np.linalg.svd(H)
+    M = U @ Vt
+    if np.linalg.det(M) < 0:
+        Vt[-1] *= -1
+        M = U @ Vt
+    return M
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", default="/dev/ttyUSB50")
@@ -200,13 +213,17 @@ def main() -> None:
 
         raw_delta = end_pos - start_pos
         raw_dir = _unit(raw_delta)
+        raw_len_m = float(np.linalg.norm(raw_delta))
         start_rot = Transformations.quaternion_to_rotation_matrix(start_q)
         end_rot = Transformations.quaternion_to_rotation_matrix(end_q)
         print(f"\n===== 动作 {idx}: {gesture} =====")
         print(f"预期: {expected}")
         print(f"原始 tracker 位移 (m): {_fmt_vec(raw_delta)}")
+        print(f"原始位移幅度: {raw_len_m * 1000.0:.0f} mm")
         if raw_dir is not None:
             print(f"原始位移方向 (单位向量): {_fmt_vec(raw_dir)}")
+        if idx <= 3 and raw_len_m < 0.05:
+            print("警告: 位移太小 (<5cm)，该动作请推远一点重测")
 
         parent_xyz, parent_rot = _parent_robot_target(
             start_pos, start_q, end_pos, end_q, args.scale
@@ -223,22 +240,85 @@ def main() -> None:
             print(f"命令位移方向 (单位向量): {_fmt_vec(xyz_dir)}")
 
         if idx >= 4:
+            raw_rel = np.asarray(
+                Transformations.rotation_matrix_to_rxryrz(start_rot.T @ end_rot),
+                dtype=float,
+            )
             rot_deg = np.degrees(np.linalg.norm(cmd_rot))
             print(
-                f"原始相对旋转 (rad): {_fmt_vec(np.asarray(Transformations.rotation_matrix_to_rxryrz(start_rot.T @ end_rot), dtype=float))}"
+                f"原始相对旋转 (rad): {_fmt_vec(raw_rel)}  "
+                f"幅度 {np.degrees(np.linalg.norm(raw_rel)):.1f} deg"
             )
             print(f"插件命令旋转 delta (rad): {_fmt_vec(cmd_rot)}  幅度 {rot_deg:.2f} deg")
+            if np.linalg.norm(raw_rel) < 0.15:
+                print("警告: 原始旋转幅度太小 (<8.6 deg)，该动作请转到 20~40 度重测")
         print()
-        results.append((gesture, expected, raw_delta, raw_dir, cmd_xyz, cmd_rot))
+        is_translation = idx <= 3
+        raw_rel = None
+        if idx >= 4:
+            raw_rel = np.asarray(
+                Transformations.rotation_matrix_to_rxryrz(start_rot.T @ end_rot),
+                dtype=float,
+            )
+        results.append(
+            (
+                gesture,
+                expected,
+                raw_delta,
+                raw_dir,
+                cmd_xyz,
+                cmd_rot,
+                raw_len_m,
+                is_translation,
+                raw_rel,
+            )
+        )
 
     print("========== 汇总（请完整复制） ==========")
-    for gesture, expected, raw_delta, raw_dir, cmd_xyz, cmd_rot in results:
+    translation_dirs = []
+    translation_dst = [
+        np.array([1.0, 0.0, 0.0]),
+        np.array([0.0, -1.0, 0.0]),
+        np.array([0.0, 0.0, 1.0]),
+    ]
+    for (
+        gesture,
+        expected,
+        raw_delta,
+        raw_dir,
+        cmd_xyz,
+        cmd_rot,
+        raw_len_m,
+        is_translation,
+        raw_rel,
+    ) in results:
         print(f"\n{gesture} | {expected}")
         if raw_dir is not None:
             print(f"  原始方向: {_fmt_vec(raw_dir)}")
-        print(f"  命令平移 (mm): {_fmt_vec(cmd_xyz)}")
-        if cmd_rot is not None:
+            if is_translation:
+                translation_dirs.append(raw_dir)
+        if is_translation:
+            print(f"  原始位移幅度: {raw_len_m * 1000.0:.0f} mm")
+            print(f"  命令平移 (mm): {_fmt_vec(cmd_xyz)}")
+        else:
+            if raw_rel is not None:
+                print(
+                    f"  原始旋转 (rad): {_fmt_vec(raw_rel)}  "
+                    f"幅度 {np.degrees(np.linalg.norm(raw_rel)):.1f} deg"
+                )
             print(f"  命令旋转 (rad): {_fmt_vec(cmd_rot)}")
+
+    if len(translation_dirs) == 3:
+        m_correct = _kabsch_matrix(translation_dirs, translation_dst)
+        print("\n========== 修正平移映射矩阵（复制给 Codex） ==========")
+        print("M_correct (raw tracker -> Piper base):")
+        print("[")
+        for row in m_correct:
+            print("  [" + ", ".join(f"{v:+.9f}" for v in row) + "],")
+        print("]")
+        for name, src in zip(["向前", "向右", "向上"], translation_dirs):
+            out = m_correct @ src
+            print(f"  校验 {name}: M@raw = {_fmt_vec(out)}")
 
 
 if __name__ == "__main__":
