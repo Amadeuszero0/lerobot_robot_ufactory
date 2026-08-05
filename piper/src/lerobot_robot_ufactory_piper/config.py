@@ -39,6 +39,11 @@ class PiperFollowerConfig(RobotConfig):
     cartesian_command_mode: str = "step"
     max_cartesian_following_error_mm: float = 600.0
     max_rotation_following_error_rad: float = 3.2
+    # Optional per-cycle caps in direct mode (None = unbounded, V16 behavior).
+    # Set to ~25 mm / 0.35 rad to prevent large single-cycle target jumps
+    # from stalling the firmware MOVE P replanner on fast gestures.
+    direct_max_step_mm: float | None = None
+    direct_max_step_rad: float | None = None
     startup_tcp_pose: tuple[float, ...] | None = None
     startup_move_timeout_s: float = 30.0
     hold_position_on_disconnect: bool = False
@@ -99,6 +104,10 @@ class PiperFollowerConfig(RobotConfig):
             raise ValueError("startup_tcp_pose must contain six values")
         if self.startup_move_timeout_s <= 0:
             raise ValueError("startup_move_timeout_s must be positive")
+        if self.direct_max_step_mm is not None and self.direct_max_step_mm <= 0:
+            raise ValueError("direct_max_step_mm must be positive when set")
+        if self.direct_max_step_rad is not None and self.direct_max_step_rad <= 0:
+            raise ValueError("direct_max_step_rad must be positive when set")
 
 
 @RobotConfig.register_subclass("uf::dual_piper")

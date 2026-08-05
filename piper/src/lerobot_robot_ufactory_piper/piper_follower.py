@@ -336,8 +336,20 @@ class PiperFollower(Robot):
                     f"Piper {self.id} direct rotation target {angular_error:.3f} rad away "
                     f"(limit {self.config.max_rotation_following_error_rad:.3f} rad)"
                 )
-            limited_xyz = bounded_xyz
-            limited_rotation = desired_rotation
+            max_direct_step = getattr(self.config, "direct_max_step_mm", None)
+            if max_direct_step is not None and max_direct_step > 0:
+                limited_xyz = vector_step_towards(
+                    current_xyz, bounded_xyz, max_direct_step
+                )
+            else:
+                limited_xyz = bounded_xyz
+            max_direct_rot = getattr(self.config, "direct_max_step_rad", None)
+            if max_direct_rot is not None and max_direct_rot > 0:
+                limited_rotation = vector_step_towards(
+                    current_rotation, desired_rotation, max_direct_rot
+                )
+            else:
+                limited_rotation = desired_rotation
         elif tracking_blocked:
             limited_xyz = command_xyz
             limited_rotation = command_rotation
