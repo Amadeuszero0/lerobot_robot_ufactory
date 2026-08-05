@@ -19,6 +19,7 @@ from .config import (
 from .piper_follower import DualPiperFollower, PiperFollower
 from .piper_leader import DualPiperLeader, PiperLeader
 from .pika_teleop import DualPikaTeleop, PiperPikaTeleop
+from .piper_joint_stream import PiperJointStreamConfig, PiperJointStreamFollower
 
 __all__ = [
     "DualPikaTeleop",
@@ -33,4 +34,6 @@ __all__ = [
     "PiperLeaderConfig",
     "PiperPikaTeleop",
     "PiperPikaTeleopConfig",
+    "PiperJointStreamFollower",
+    "PiperJointStreamConfig",
 ]
