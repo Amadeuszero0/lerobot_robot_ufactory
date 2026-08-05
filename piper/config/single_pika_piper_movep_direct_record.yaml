@@ -73,8 +73,8 @@ teleop:
   gripper_max_step: 0.15
 
 dataset:
-  root: /home/admin1/lerobot_data/pika_piper_movep_direct_record_test
-  repo_id: local/pika_piper_movep_direct_record_test
+  root: /home/admin1/lerobot_data/pika_piper_record_test01
+  repo_id: local/pika_piper_record_test01
   single_task: Move the object with the Piper arm
   fps: 30
   episode_time_s: 10
