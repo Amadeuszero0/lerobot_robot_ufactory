@@ -83,7 +83,7 @@ dataset:
   repo_id: local/pika_piper_movep_direct_record_test
   single_task: Move the object with the Piper arm
   fps: 30
-  episode_time_s: 30
+  episode_time_s: 10
   reset_time_s: 10
   num_episodes: 50
   push_to_hub: false
