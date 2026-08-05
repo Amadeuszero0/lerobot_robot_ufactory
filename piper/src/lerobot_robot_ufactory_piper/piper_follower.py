@@ -229,8 +229,8 @@ class PiperFollower(Robot):
         return observation
 
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
-        if not self.is_connected:
-            raise DeviceNotConnectedError(f"{self} is not connected")
+        if not self.bus.is_connected:
+            raise DeviceNotConnectedError(f"{self} CAN bus is not connected")
 
         local = self._strip_and_validate(action)
         if self.config.control_space == "joint":
