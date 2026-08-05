@@ -46,6 +46,7 @@ class PiperFollower(Robot):
         self._locked_rotation: tuple[float, float, float] | None = None
         self._force_step_cartesian = False
         self._last_tracking_warning_time_s = 0.0
+        self._last_following_warning_s = 0.0
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
                 max_workers=len(self.cameras), thread_name_prefix=f"{prefix or 'piper'}-camera"
@@ -329,30 +330,39 @@ class PiperFollower(Robot):
         if direct_command and not (translation_in_deadband and rotation_in_deadband):
             translation_error = math.dist(current_xyz, bounded_xyz)
             angular_error = rotation_distance(current_rotation, desired_rotation)
-            if translation_error > self.config.max_cartesian_following_error_mm:
-                raise RuntimeError(
-                    f"Piper {self.id} direct target {translation_error:.1f} mm away "
-                    f"(limit {self.config.max_cartesian_following_error_mm:.1f} mm)"
-                )
-            if angular_error > self.config.max_rotation_following_error_rad:
-                raise RuntimeError(
-                    f"Piper {self.id} direct rotation target {angular_error:.3f} rad away "
-                    f"(limit {self.config.max_rotation_following_error_rad:.3f} rad)"
-                )
-            max_direct_step = getattr(self.config, "direct_max_step_mm", None)
-            if max_direct_step is not None and max_direct_step > 0:
-                limited_xyz = vector_step_towards(
-                    current_xyz, bounded_xyz, max_direct_step
-                )
+            if (
+                translation_error > self.config.max_cartesian_following_error_mm
+                or angular_error > self.config.max_rotation_following_error_rad
+            ):
+                now_s = time.monotonic()
+                if now_s - self._last_following_warning_s >= 1.0:
+                    logger.warning(
+                        "Piper %s direct target exceeds following limits "
+                        "(translation %.1f/%.1f mm, rotation %.3f/%.3f rad); holding",
+                        self.id,
+                        translation_error,
+                        self.config.max_cartesian_following_error_mm,
+                        angular_error,
+                        self.config.max_rotation_following_error_rad,
+                    )
+                    self._last_following_warning_s = now_s
+                limited_xyz = current_xyz
+                limited_rotation = current_rotation
             else:
-                limited_xyz = bounded_xyz
-            max_direct_rot = getattr(self.config, "direct_max_step_rad", None)
-            if max_direct_rot is not None and max_direct_rot > 0:
-                limited_rotation = vector_step_towards(
-                    current_rotation, desired_rotation, max_direct_rot
-                )
-            else:
-                limited_rotation = desired_rotation
+                max_direct_step = getattr(self.config, "direct_max_step_mm", None)
+                if max_direct_step is not None and max_direct_step > 0:
+                    limited_xyz = vector_step_towards(
+                        current_xyz, bounded_xyz, max_direct_step
+                    )
+                else:
+                    limited_xyz = bounded_xyz
+                max_direct_rot = getattr(self.config, "direct_max_step_rad", None)
+                if max_direct_rot is not None and max_direct_rot > 0:
+                    limited_rotation = vector_step_towards(
+                        current_rotation, desired_rotation, max_direct_rot
+                    )
+                else:
+                    limited_rotation = desired_rotation
         elif tracking_blocked:
             limited_xyz = command_xyz
             limited_rotation = command_rotation
