@@ -1,11 +1,12 @@
 """Piper joint-streaming follower (official-style motion layer).
 
 Receives the same Cartesian Pika teleop actions as ``PiperFollower``, but
-executes them by solving IK with pinocchio and streaming joint targets
-through the SDK's joint control mode (``MotionCtrl_2(0x01,0x01,speed,0xad)``
-+ ``JointCtrl``), with per-cycle Cartesian and joint step limits. This is
-the motion layer the official PikaAnyArm stack uses: it avoids the MOVE P
-re-planning that causes jitter and fixed-speed chasing.
+executes them by solving IK with the URDF kinematics (pure numpy) and
+streaming joint targets through the SDK's joint control mode
+(``MotionCtrl_2(0x01,0x01,speed,0xad)`` + ``JointCtrl``), with per-cycle
+Cartesian and joint step limits. This is the motion layer the official
+PikaAnyArm stack uses: it avoids the MOVE P re-planning that causes jitter
+and fixed-speed chasing.
 
 Kept as a separate robot type (``uf::piper_joint_stream``) so the MOVE P
 path (V13/V14, ``uf::piper``) is completely untouched.
@@ -66,9 +67,9 @@ class PiperJointStreamConfig(RobotConfig):
 
     # Joint streaming.
     max_joint_step_deg: float = 3.0
-    ik_max_iter: int = 60
+    ik_max_iter: int = 10
     ik_damping: float = 1e-3
-    ik_weight_ori: float = 0.1
+    ik_weight_ori: float = 1.0
     ik_residual_limit: float = 0.03
     move_speed_percent: int = 30
     # End-effector frame that matches the SDK pose. Verify with

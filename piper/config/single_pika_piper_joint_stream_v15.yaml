@@ -5,8 +5,8 @@
 # (MotionCtrl_2 0x01/0x01 + JointCtrl) with per-cycle joint step limits.
 # This replaces MOVE P re-planning. V13/V14 (MOVE P) are untouched.
 #
-# BEFORE first run: install pinocchio and run the FK/IK pre-flight check:
-#   pip install pinocchio
+# BEFORE first run: run the FK/IK pre-flight check (pure numpy, no extra
+# install needed):
 #   python piper/tools/verify_ik_fk.py --port can0
 # Then set ee_xyz_mm / ee_rpy_deg to the best candidate from that output.
 robot:
@@ -27,9 +27,9 @@ robot:
   rotation_deadband_rad: 0.004
 
   max_joint_step_deg: 3.0
-  ik_max_iter: 60
+  ik_max_iter: 10
   ik_damping: 0.001
-  ik_weight_ori: 0.1
+  ik_weight_ori: 1.0
   ik_residual_limit: 0.03
   move_speed_percent: 30
   # Official PikaAnyArm convention; replace with verify_ik_fk.py output.

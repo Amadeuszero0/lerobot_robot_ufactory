@@ -1,27 +1,25 @@
-"""Pure-pinocchio FK/IK for the Piper arm.
+"""URDF-based FK/IK for the Piper arm: pure numpy, zero third-party deps.
 
-Ported from the official PikaAnyArm stack
-(piper/pika_remote_piper/scripts/forward_inverse_kinematics.py and
-piper/piper_ros/piper_description/urdf/piper_description.urdf) but without
-ROS, CasADi or Meshcat dependencies. The IK is a damped least-squares solver
-seeded with the current joint values, so successive solutions stay
-continuous (the same idea as the official stack's "seed from previous
-solution").
+The official PikaAnyArm stack uses pinocchio; here the same URDF
+(piper_description.urdf) is parsed with the stdlib XML parser and the
+kinematic chain is evaluated with numpy. The IK is a damped least-squares
+solver with a numerical Jacobian, seeded with the current joint values so
+successive solutions stay continuous (same idea as the official stack).
 
-Only extra dependency: ``pinocchio``. Install on the robot PC:
-
-    pip install pinocchio
+No install step is required beyond numpy, which LeRobot already ships.
 """
 
 from __future__ import annotations
 
 import math
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
 _URDF = Path(__file__).resolve().parents[2] / "urdf" / "piper_description.urdf"
+_ACTUATED = {"revolute", "continuous"}
 
 
 def _rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -56,14 +54,116 @@ def matrix_to_xyzrpy(T: np.ndarray) -> tuple[float, float, float, float, float, 
     return (T[0, 3], T[1, 3], T[2, 3], roll, pitch, yaw)
 
 
+def _axis_angle_vector(R: np.ndarray) -> np.ndarray:
+    """Rotation matrix -> 3-vector axis*angle (rad)."""
+    cos_theta = min(1.0, max(-1.0, (np.trace(R) - 1.0) / 2.0))
+    theta = math.acos(cos_theta)
+    if theta < 1e-9:
+        return np.zeros(3)
+    axis = np.array(
+        [R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]]
+    )
+    n = np.linalg.norm(axis)
+    if n < 1e-9:  # 180 deg rotation: pick axis from diagonal
+        diag = np.sqrt(np.maximum(np.diag(R) + 1.0, 0.0) / 2.0)
+        axis = diag
+        if R[0, 1] < 0:
+            axis[1] *= -1
+        if R[0, 2] < 0:
+            axis[2] *= -1
+        axis /= np.linalg.norm(axis)
+    else:
+        axis = axis / n
+    return axis * theta
+
+
+def _rotation_about(axis: np.ndarray, theta: float) -> np.ndarray:
+    """Rodrigues rotation matrix about a unit axis."""
+    u = np.asarray(axis, dtype=float)
+    n = np.linalg.norm(u)
+    if n < 1e-12:
+        return np.eye(3)
+    u = u / n
+    K = np.array(
+        [[0, -u[2], u[1]], [u[2], 0, -u[0]], [-u[1], u[0], 0]]
+    )
+    return np.eye(3) + math.sin(theta) * K + (1 - math.cos(theta)) * (K @ K)
+
+
+def _log_se3(T: np.ndarray) -> np.ndarray:
+    """SE(3) -> 6-vector [v, w] in body frame (small-angle approximation)."""
+    return np.concatenate([T[:3, 3], _axis_angle_vector(T[:3, :3])])
+
+
+def _parse_urdf(path: Path) -> list[dict]:
+    tree = ET.parse(str(path))
+    root = tree.getroot()
+    joints = []
+    for node in root.iter("joint"):
+        jtype = node.get("type", "fixed")
+        parent = node.find("parent").get("link")
+        child = node.find("child").get("link")
+        origin = node.find("origin")
+        xyz = (0.0, 0.0, 0.0)
+        rpy = (0.0, 0.0, 0.0)
+        if origin is not None:
+            if origin.get("xyz"):
+                xyz = tuple(float(v) for v in origin.get("xyz").split())
+            if origin.get("rpy"):
+                rpy = tuple(float(v) for v in origin.get("rpy").split())
+        axis = (0.0, 0.0, 1.0)
+        if node.find("axis") is not None and node.find("axis").get("xyz"):
+            axis = tuple(float(v) for v in node.find("axis").get("xyz").split())
+        lower, upper = -math.pi, math.pi
+        limit = node.find("limit")
+        if limit is not None:
+            if limit.get("lower") is not None:
+                lower = float(limit.get("lower"))
+            if limit.get("upper") is not None:
+                upper = float(limit.get("upper"))
+        joints.append(
+            {
+                "name": node.get("name"),
+                "type": jtype,
+                "parent": parent,
+                "child": child,
+                "xyz": np.asarray(xyz, dtype=float),
+                "rpy": np.asarray(rpy, dtype=float),
+                "axis": np.asarray(axis, dtype=float),
+                "lower": lower,
+                "upper": upper,
+            }
+        )
+    return joints
+
+
+def _build_chain(joints: list[dict]) -> list[dict]:
+    """Ordered chain of joints from base_link down to joint6's child."""
+    by_parent: dict[str, list[dict]] = {}
+    for j in joints:
+        by_parent.setdefault(j["parent"], []).append(j)
+    chain: list[dict] = []
+    frontier = [j for j in joints if j["parent"] == "base_link"]
+    seen = set()
+    while frontier:
+        j = frontier.pop(0)
+        if j["name"] in seen:
+            continue
+        seen.add(j["name"])
+        chain.append(j)
+        if j["name"] == "joint6":
+            return chain
+        frontier.extend(by_parent.get(j["child"], []))
+    raise RuntimeError("URDF 链条未找到 joint6")
+
+
 class PiperKinematics:
     """FK/IK for the 6-DOF Piper arm with a configurable end-effector frame.
 
-    ``ee_xyzrpy_m``/``ee_rpy_rad`` define the transform from the URDF
-    joint6 frame to the end-effector frame that matches the Piper SDK pose.
-    The official PikaAnyArm convention is +190 mm along X and a -90 deg
-    pitch; run piper/tools/verify_ik_fk.py to confirm which candidate
-    matches your SDK.
+    ``ee_xyzrpy_m``/``ee_rpy_rad`` define the transform from the URDF joint6
+    frame to the end-effector frame that matches the Piper SDK pose. The
+    official PikaAnyArm convention is +190 mm along X and a -90 deg pitch;
+    run piper/tools/verify_ik_fk.py to confirm which candidate matches.
     """
 
     def __init__(
@@ -72,76 +172,49 @@ class PiperKinematics:
         ee_xyzrpy_m: Iterable[float] = (0.19, 0.0, 0.0),
         ee_rpy_rad: Iterable[float] = (0.0, -math.pi / 2.0, 0.0),
     ) -> None:
-        import pinocchio as pin  # lazy: only needed when this module is used
-
-        self._pin = pin
         path = Path(urdf_path) if urdf_path is not None else _URDF
         if not path.exists():
             raise FileNotFoundError(f"Piper URDF not found: {path}")
-
-        self.model = self._build_model(pin, path)
+        self.chain = _build_chain(_parse_urdf(path))
+        self.joint_indices = [
+            i for i, j in enumerate(self.chain) if j["type"] in _ACTUATED
+        ]
+        if len(self.joint_indices) != 6:
+            raise RuntimeError(
+                f"URDF 链条应有 6 个驱动关节，实际 {len(self.joint_indices)}"
+            )
+        self.lower = np.array(
+            [self.chain[i]["lower"] for i in self.joint_indices], dtype=float
+        )
+        self.upper = np.array(
+            [self.chain[i]["upper"] for i in self.joint_indices], dtype=float
+        )
         self.ee_tf = xyzrpy_to_matrix(
             np.asarray(list(ee_xyzrpy_m), dtype=float),
             np.asarray(list(ee_rpy_rad), dtype=float),
         )
-        quat = pin.Quaternion(self.ee_tf[:3, :3])
-        self.model.addFrame(
-            pin.Frame(
-                "ee",
-                self.model.getJointId("joint6"),
-                pin.SE3(quat, self.ee_tf[:3, 3]),
-                pin.FrameType.OP_FRAME,
-            )
-        )
-        # Create data AFTER adding the frame so data.oMf includes "ee".
-        self.data = self.model.createData()
-        self.frame_id = self.model.getFrameId("ee")
-        self.lower = np.asarray(self.model.lowerPositionLimit[:6], dtype=float)
-        self.upper = np.asarray(self.model.upperPositionLimit[:6], dtype=float)
+        self._origins = [
+            xyzrpy_to_matrix(j["xyz"], j["rpy"]) for j in self.chain
+        ]
+        self._actuated_flags = [
+            j["type"] in _ACTUATED for j in self.chain
+        ]
 
-    @staticmethod
-    def _build_model(pin, path: Path):
-        """Load the kinematic model across pinocchio versions."""
-        last_error: Exception | None = None
-
-        # pinocchio 2.x: buildModelFromUrdf(filename)
-        fn = getattr(pin, "buildModelFromUrdf", None)
-        if fn is not None:
-            try:
-                return fn(str(path))
-            except Exception as exc:  # pragma: no cover - version dependent
-                last_error = exc
-
-        # pinocchio 3.x: buildModelFromXML(xml_string)
-        fn = getattr(pin, "buildModelFromXML", None)
-        if fn is not None:
-            try:
-                return fn(path.read_text(encoding="utf-8"))
-            except Exception as exc:  # pragma: no cover - version dependent
-                last_error = exc
-
-        # legacy RobotWrapper path
-        try:
-            return pin.RobotWrapper.BuildFromURDF(str(path)).model
-        except Exception as exc:  # pragma: no cover - version dependent
-            last_error = exc
-
-        raise RuntimeError(
-            "无法用当前 pinocchio 加载 URDF；请升级/重装 pinocchio "
-            f"(最后错误: {last_error})"
-        ) from last_error
-
-    def _q_full(self, q_rad: np.ndarray) -> np.ndarray:
-        q = np.zeros(self.model.nq, dtype=float)
-        q[:6] = np.asarray(q_rad, dtype=float).reshape(-1)[:6]
-        return q
+    def _fk_matrix(self, q_rad: np.ndarray) -> np.ndarray:
+        T = np.eye(4)
+        qi = 0
+        for idx, origin in enumerate(self._origins):
+            T = T @ origin
+            if self._actuated_flags[idx]:
+                j = self.chain[idx]
+                R = _rotation_about(j["axis"], float(q_rad[qi]))
+                T[:3, :3] = T[:3, :3] @ R
+                qi += 1
+        return T @ self.ee_tf
 
     def forward(self, q_rad: np.ndarray) -> np.ndarray:
-        """FK: returns the 4x4 end-effector transform (meters)."""
-        pin = self._pin
-        pin.forwardKinematics(self.model, self.data, self._q_full(q_rad))
-        pin.updateFramePlacements(self.model, self.data)
-        return np.asarray(self.data.oMf[self.frame_id])
+        """FK: 4x4 end-effector transform (meters)."""
+        return self._fk_matrix(np.asarray(q_rad, dtype=float).reshape(-1))
 
     def forward_xyzrpy(
         self, q_rad: np.ndarray
@@ -157,18 +230,29 @@ class PiperKinematics:
             math.degrees(yaw),
         )
 
+    def _jacobian(self, q_rad: np.ndarray) -> np.ndarray:
+        eps = 1e-6
+        T_cur = self._fk_matrix(q_rad)
+        T_inv = np.linalg.inv(T_cur)
+        J = np.zeros((6, 6))
+        for i in range(6):
+            qp = q_rad.copy()
+            qp[i] += eps
+            J[:, i] = _log_se3(T_inv @ self._fk_matrix(qp)) / eps
+        return J
+
     def ik(
         self,
         target_xyz_mm: Iterable[float],
         target_rpy_deg: Iterable[float],
         q_seed_rad: Iterable[float],
-        max_iter: int = 60,
+        max_iter: int = 10,
         tol: float = 1e-4,
         damping: float = 1e-3,
-        weight_ori: float = 0.1,
+        weight_ori: float = 1.0,
+        jac_reuse: int = 2,
     ) -> tuple[np.ndarray, float]:
-        """Damped least-squares IK. Returns (q_rad, residual)."""
-        pin = self._pin
+        """Levenberg-Marquardt IK. Returns (q_rad, residual)."""
         target = xyzrpy_to_matrix(
             np.asarray(list(target_xyz_mm), dtype=float) / 1000.0,
             np.radians(np.asarray(list(target_rpy_deg), dtype=float)),
@@ -178,30 +262,31 @@ class PiperKinematics:
             self.lower,
             self.upper,
         )
-        W = np.diag([1.0, 1.0, 1.0, weight_ori, weight_ori, weight_ori])
+        W2 = np.diag([1.0, 1.0, 1.0, weight_ori, weight_ori, weight_ori]) ** 2
+        lam = float(damping)
+        max_step = math.radians(0.5)
         residual = float("inf")
-        for _ in range(max_iter):
-            pin.forwardKinematics(self.model, self.data, self._q_full(q))
-            pin.updateFramePlacements(self.model, self.data)
-            M = np.asarray(self.data.oMf[self.frame_id])
-            err = np.asarray(
-                pin.log6(pin.SE3(M).inverse() * pin.SE3(target)).vector
-            )
+        J = None
+        for it in range(max_iter):
+            T_cur = self._fk_matrix(q)
+            err = _log_se3(np.linalg.inv(T_cur) @ target)
             residual = float(np.linalg.norm(err))
             if residual < tol:
                 break
-            J = np.asarray(
-                pin.computeFrameJacobian(
-                    self.model,
-                    self.data,
-                    self._q_full(q),
-                    self.frame_id,
-                    pin.LOCAL_WORLD_ALIGNED,
-                )
-            )[:, :6]
-            Jw = W @ J
-            dq = Jw.T @ np.linalg.solve(
-                Jw @ Jw.T + damping * np.eye(6), err
+            if J is None or it % jac_reuse == 0:
+                J = self._jacobian(q)
+            A = J.T @ W2 @ J + lam * np.eye(6)
+            dq = np.linalg.solve(A, J.T @ W2 @ err)
+            step = float(np.max(np.abs(dq)))
+            if step > max_step:
+                dq = dq * (max_step / step)
+            q_new = np.clip(q + dq, self.lower, self.upper)
+            err_new = _log_se3(
+                np.linalg.inv(self._fk_matrix(q_new)) @ target
             )
-            q = np.clip(q + dq, self.lower, self.upper)
+            if np.linalg.norm(err_new) < residual:
+                q = q_new
+                lam = max(float(damping), lam * 0.7)
+            else:
+                lam = min(1.0, lam * 3.0)
         return q, residual
