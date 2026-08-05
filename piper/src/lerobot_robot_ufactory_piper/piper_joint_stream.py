@@ -72,10 +72,14 @@ class PiperJointStreamConfig(RobotConfig):
     ik_weight_ori: float = 1.0
     ik_residual_limit: float = 0.03
     move_speed_percent: int = 30
+    # Base frame transform (from verify_ik_fk.py --calibrate; identity by
+    # default). T_sdk = X_base @ chain(q) @ X_ee.
+    base_xyz_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    base_rpy_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
     # End-effector frame that matches the SDK pose. Verify with
-    # piper/tools/verify_ik_fk.py; the default is the official convention.
-    ee_xyz_mm: tuple[float, float, float] = (190.0, 0.0, 0.0)
-    ee_rpy_deg: tuple[float, float, float] = (0.0, -90.0, 0.0)
+    # piper/tools/verify_ik_fk.py.
+    ee_xyz_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    ee_rpy_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     send_gripper: bool = True
     gripper_effort: int = 1000
@@ -163,6 +167,8 @@ class PiperJointStreamFollower(Robot):
     def _kinematics(self) -> PiperKinematics:
         if self._kin is None:
             self._kin = PiperKinematics(
+                base_xyzrpy_m=tuple(v / 1000.0 for v in self.config.base_xyz_mm),
+                base_rpy_rad=tuple(math.radians(v) for v in self.config.base_rpy_deg),
                 ee_xyzrpy_m=tuple(v / 1000.0 for v in self.config.ee_xyz_mm),
                 ee_rpy_rad=tuple(math.radians(v) for v in self.config.ee_rpy_deg),
             )

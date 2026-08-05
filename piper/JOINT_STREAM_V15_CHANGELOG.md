@@ -65,12 +65,13 @@ V15 移植了 1 和 3，并把 2 简化为"50 Hz 每周期发一次关节命令 
 
 ```bash
 cd ~/lerobot_robot_ufactory
-python piper/tools/verify_ik_fk.py --port can0
+python piper/tools/verify_ik_fk.py --port can0 --calibrate
 ```
 
-校验工具只读，不使能、不运动。它会把我们 FK 和 SDK 位姿对比，
-选出匹配的末端帧候选（`ee_xyz_mm` / `ee_rpy_deg`）。**把它输出的最佳
-候选写进 V15 配置**，然后才允许低速试跑：
+校验工具只读，不使能、不运动。**手眼标定模式**会请你在拖动/示教模式下
+摆出 6 个以上明显不同的姿态，采样后解出 SDK 帧与 URDF 帧之间的固定
+变换（基座 `base_*` + 末端 `ee_*`）。**把输出的四个字段写进 V15 配置**，
+然后才允许低速试跑：
 
 ```bash
 uf-piper-teleop \
@@ -79,6 +80,12 @@ uf-piper-teleop \
 
 首轮测试要求：机械臂处于安全弯曲位姿、Pika 平移 < 5 cm、旋转 < 10°、
 急停可及。如果 IK 校验显示误差很大，先不要跑，把输出贴回来。
+
+## 6.5 关于 SDK 帧与 URDF 帧
+
+单姿态对比发现 SDK 位姿帧与 URDF 帧之间存在**固定的基座旋转/平移**，
+不是单纯末端偏移。因此运动学支持 `T_sdk = X_base @ chain(q) @ X_ee`
+两个固定变换，并用多姿态手眼标定（Tsai-Lenz）求解，而不是靠猜。
 
 ## 6. 已知边界
 

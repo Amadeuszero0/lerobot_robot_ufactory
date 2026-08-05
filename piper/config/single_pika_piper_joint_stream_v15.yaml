@@ -5,10 +5,11 @@
 # (MotionCtrl_2 0x01/0x01 + JointCtrl) with per-cycle joint step limits.
 # This replaces MOVE P re-planning. V13/V14 (MOVE P) are untouched.
 #
-# BEFORE first run: run the FK/IK pre-flight check (pure numpy, no extra
+# BEFORE first run: run the hand-eye calibration (pure numpy, no extra
 # install needed):
-#   python piper/tools/verify_ik_fk.py --port can0
-# Then set ee_xyz_mm / ee_rpy_deg to the best candidate from that output.
+#   python piper/tools/verify_ik_fk.py --port can0 --calibrate
+# Then fill in base_xyz_mm / base_rpy_deg / ee_xyz_mm / ee_rpy_deg from its
+# output.
 robot:
   type: uf::piper_joint_stream
   id: piper_joint_stream_follower
@@ -32,9 +33,11 @@ robot:
   ik_weight_ori: 1.0
   ik_residual_limit: 0.03
   move_speed_percent: 30
-  # Official PikaAnyArm convention; replace with verify_ik_fk.py output.
-  ee_xyz_mm: [190.0, 0.0, 0.0]
-  ee_rpy_deg: [0.0, -90.0, 0.0]
+  # Hand-eye calibration output (T_sdk = X_base @ chain(q) @ X_ee).
+  base_xyz_mm: [0.0, 0.0, 0.0]
+  base_rpy_deg: [0.0, 0.0, 0.0]
+  ee_xyz_mm: [0.0, 0.0, 0.0]
+  ee_rpy_deg: [0.0, 0.0, 0.0]
 
   send_gripper: true
   gripper_effort: 1000
