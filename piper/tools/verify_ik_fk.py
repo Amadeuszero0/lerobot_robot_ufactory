@@ -21,6 +21,7 @@ Usage (CAN must be up):
 
 import argparse
 import math
+import time
 
 import numpy as np
 
@@ -54,6 +55,8 @@ def main() -> None:
     print(f"连接 CAN 端口 {args.port}（只读，不使能、不运动）...")
     bus.connect(piper_init=False)
     try:
+        # The SDK needs ~1 s to receive the first valid feedback frames.
+        time.sleep(1.5)
         x, y, z, roll, pitch, yaw = bus.get_end_pose()
         sdk_pose = np.array([x, y, z, roll, pitch, yaw], dtype=float)
         js = bus.piper.GetArmJointMsgs().joint_state
@@ -70,6 +73,10 @@ def main() -> None:
     print()
     print("当前关节角 (rad):", np.round(q_rad, 5).tolist())
     print("SDK 末端位姿 (mm / deg):", np.round(sdk_pose, 3).tolist())
+    if np.allclose(q_rad, 0.0) or np.allclose(sdk_pose[:3], 0.0):
+        print()
+        print("警告: 关节/位姿仍是 0，说明还没收到有效反馈帧。")
+        print("请确认机械臂已上电、CAN 正常（candump can0 有 2A1~2A8 帧），再重跑。")
     print()
 
     candidates = [

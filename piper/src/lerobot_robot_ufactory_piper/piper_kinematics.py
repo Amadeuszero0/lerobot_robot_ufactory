@@ -79,7 +79,7 @@ class PiperKinematics:
         if not path.exists():
             raise FileNotFoundError(f"Piper URDF not found: {path}")
 
-        self.model = pin.buildModelFromUrdf(str(path))
+        self.model = self._build_model(pin, path)
         self.ee_tf = xyzrpy_to_matrix(
             np.asarray(list(ee_xyzrpy_m), dtype=float),
             np.asarray(list(ee_rpy_rad), dtype=float),
@@ -98,6 +98,38 @@ class PiperKinematics:
         self.frame_id = self.model.getFrameId("ee")
         self.lower = np.asarray(self.model.lowerPositionLimit[:6], dtype=float)
         self.upper = np.asarray(self.model.upperPositionLimit[:6], dtype=float)
+
+    @staticmethod
+    def _build_model(pin, path: Path):
+        """Load the kinematic model across pinocchio versions."""
+        last_error: Exception | None = None
+
+        # pinocchio 2.x: buildModelFromUrdf(filename)
+        fn = getattr(pin, "buildModelFromUrdf", None)
+        if fn is not None:
+            try:
+                return fn(str(path))
+            except Exception as exc:  # pragma: no cover - version dependent
+                last_error = exc
+
+        # pinocchio 3.x: buildModelFromXML(xml_string)
+        fn = getattr(pin, "buildModelFromXML", None)
+        if fn is not None:
+            try:
+                return fn(path.read_text(encoding="utf-8"))
+            except Exception as exc:  # pragma: no cover - version dependent
+                last_error = exc
+
+        # legacy RobotWrapper path
+        try:
+            return pin.RobotWrapper.BuildFromURDF(str(path)).model
+        except Exception as exc:  # pragma: no cover - version dependent
+            last_error = exc
+
+        raise RuntimeError(
+            "无法用当前 pinocchio 加载 URDF；请升级/重装 pinocchio "
+            f"(最后错误: {last_error})"
+        ) from last_error
 
     def _q_full(self, q_rad: np.ndarray) -> np.ndarray:
         q = np.zeros(self.model.nq, dtype=float)
