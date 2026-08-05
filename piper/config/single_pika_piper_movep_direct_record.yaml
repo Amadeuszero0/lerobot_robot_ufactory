@@ -40,9 +40,9 @@ robot:
   cameras:
     realsense:
       type: opencv
-      # 2026-08-05 实测：by-id video-index0 已不对应 RGB；video2 是
-      # D435i 的 640x480 彩色节点（用 ls -l /dev/v4l/by-id/ 确认）。
-      index_or_path: /dev/video2
+      # 2026-08-05 实测 by-id：D435i video-index0 -> /dev/video12（彩色），
+      # D405 占 video0~5。直接使用 video12 避免软链/枚举问题。
+      index_or_path: /dev/video12
       width: 640
       height: 480
       fps: 30
