@@ -179,6 +179,11 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     rotation_scale: float = 1.0
     rotation_filter_alpha: float = 1.0
     use_raw_translation_mapping: bool = False
+    # Dual-arm: force which tracker this side uses (e.g. T20 / T21), and
+    # optionally override the raw translation matrix per side (None = use the
+    # measured module-level matrix).
+    tracker_device_id: str | None = None
+    raw_translation_matrix: tuple[tuple[float, float, float], ...] | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -199,3 +204,8 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             raise ValueError("rotation_scale must be in (0, 1]")
         if not 0 < self.rotation_filter_alpha <= 1:
             raise ValueError("rotation_filter_alpha must be in (0, 1]")
+        if self.raw_translation_matrix is not None:
+            if len(self.raw_translation_matrix) != 3 or any(
+                len(row) != 3 for row in self.raw_translation_matrix
+            ):
+                raise ValueError("raw_translation_matrix must be a 3x3 matrix")

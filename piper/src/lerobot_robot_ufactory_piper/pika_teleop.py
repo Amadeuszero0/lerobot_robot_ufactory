@@ -74,6 +74,18 @@ _PIPER_TOOL_AXIS_CORRECTION = np.array(
 class _PikaTeleop(UFactoryPikaTeleop):
     """Local bug-fix subclass; the parent Pika implementation is left untouched."""
 
+    def __init__(self, config, prefix: str = "") -> None:
+        super().__init__(config, prefix=prefix)
+        tracker_id = getattr(self.config, "tracker_device_id", None)
+        if tracker_id:
+            self.pika_device.pika_tracker_device = tracker_id
+        matrix = getattr(self.config, "raw_translation_matrix", None)
+        self._raw_to_piper = (
+            np.asarray(matrix, dtype=float)
+            if matrix is not None
+            else _RAW_TO_PIPER_TRANSLATION
+        )
+
     def get_action(self) -> dict[str, Any]:
         # The parent returns its mutable internal cache.  Apply the Piper axis
         # mapping to a copy so a temporary tracker dropout cannot transform the
@@ -109,7 +121,7 @@ class _PikaTeleop(UFactoryPikaTeleop):
         if not hasattr(self, "_raw_start_xyz") or self._raw_start_xyz is None:
             self._raw_start_xyz = raw_m.copy()
         delta_mm = (raw_m - self._raw_start_xyz) * 1000.0 * self.config.scale_xyz
-        return origin + _RAW_TO_PIPER_TRANSLATION @ delta_mm
+        return origin + self._raw_to_piper @ delta_mm
 
     def run(self) -> None:
         self._is_connected = True
@@ -279,7 +291,10 @@ class DualPikaTeleop(UFBaseTeleop):
         for side, teleop_config in config.teleops.items():
             if not isinstance(teleop_config, PikaTeleopConfig):
                 raise TypeError(f"{side} must use type uf::pika_teleop, got {teleop_config.type}")
-            self.teleops[side] = _PikaTeleop(teleop_config, prefix=side)
+            if isinstance(teleop_config, PiperPikaTeleopConfig):
+                self.teleops[side] = PiperPikaTeleop(teleop_config, prefix=side)
+            else:
+                self.teleops[side] = _PikaTeleop(teleop_config, prefix=side)
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="dual-pika")
 
     @property

@@ -1,5 +1,13 @@
-# 方案二：两套 Pika 分别遥操两台 Piper follower（末端位姿/MOVE P）。
-# 首次上真机务必先将 move_speed_percent 和单周期限幅保持在较小值。
+# 方案二：双 Pika 遥操双 Piper（升级到 final 参数）。
+# 硬件接线：
+#   左手 Pika  -> /dev/pika_left （udev 按 USB 物理端口固定）
+#   右手 Pika  -> /dev/pika_right
+#   左臂 Piper -> can0，右臂 Piper -> can1（按插入顺序约定，开机用 ip link show 确认）
+# tracker 绑定：left=T20、right=T21 只是占位，首次请用
+#   python piper/tools/measure_pika_piper_mapping.py --port /dev/pika_left
+#   确认左右各是哪个 tracker，不对就交换。
+# 注意：右手映射矩阵尚未单独标定，默认沿用左手实测矩阵；双臂方向若右手不对，
+# 需对右手单独跑测量工具并填入 raw_translation_matrix。
 robot:
   type: uf::dual_piper
   id: dual_piper
@@ -10,53 +18,69 @@ robot:
     left:
       type: uf::piper
       id: left_piper
-      port: can_follower1
+      port: can0
       control_space: cartesian
       configure_role_on_connect: true
       park_on_connect: false
       park_on_disconnect: false
-      disable_torque_on_disconnect: true
-      max_cartesian_step_mm: 5.0
-      max_rotation_step_rad: 0.05
-      workspace_x: [100, 600]
-      workspace_y: [-500, 500]
-      workspace_z: [50, 600]
+      disable_torque_on_disconnect: false
+      hold_position_on_disconnect: true
+      feedback_startup_timeout_s: 5.0
+      cartesian_command_mode: direct
+      max_cartesian_step_mm: 6.0
+      max_rotation_step_rad: 0.10
+      max_cartesian_following_error_mm: 600.0
+      max_rotation_following_error_rad: 3.2
+      direct_max_step_mm: 25.0
+      direct_max_step_rad: 0.35
+      translation_deadband_mm: 0.5
+      rotation_deadband_rad: 0.004
+      workspace_x: [50.0, 600.0]
+      workspace_y: [-500.0, 500.0]
+      workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 15
+      move_speed_percent: 30
+      # 双臂首次测试：手动把左右臂摆到安全镜像位姿，不自动移动
+      # startup_tcp_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
+      send_gripper: true
       gripper_effort: 1000
-      cameras:
-        wrist:
-          type: opencv
-          index_or_path: /dev/v4l/by-id/REPLACE_LEFT_CAMERA
-          width: 640
-          height: 480
-          fps: 30
-          fourcc: MJPG
+      gripper_ctrl_code: 3
+      gripper_command_deadband: 0.005
+      gripper_min_command_interval_s: 0.03
+      gripper_keepalive_s: 0.20
+      cameras: {}
     right:
       type: uf::piper
       id: right_piper
-      port: can_follower2
+      port: can1
       control_space: cartesian
       configure_role_on_connect: true
       park_on_connect: false
       park_on_disconnect: false
-      disable_torque_on_disconnect: true
-      max_cartesian_step_mm: 5.0
-      max_rotation_step_rad: 0.05
-      workspace_x: [100, 600]
-      workspace_y: [-500, 500]
-      workspace_z: [50, 600]
+      disable_torque_on_disconnect: false
+      hold_position_on_disconnect: true
+      feedback_startup_timeout_s: 5.0
+      cartesian_command_mode: direct
+      max_cartesian_step_mm: 6.0
+      max_rotation_step_rad: 0.10
+      max_cartesian_following_error_mm: 600.0
+      max_rotation_following_error_rad: 3.2
+      direct_max_step_mm: 25.0
+      direct_max_step_rad: 0.35
+      translation_deadband_mm: 0.5
+      rotation_deadband_rad: 0.004
+      workspace_x: [50.0, 600.0]
+      workspace_y: [-500.0, 500.0]
+      workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 15
+      move_speed_percent: 30
+      send_gripper: true
       gripper_effort: 1000
-      cameras:
-        wrist:
-          type: opencv
-          index_or_path: /dev/v4l/by-id/REPLACE_RIGHT_CAMERA
-          width: 640
-          height: 480
-          fps: 30
-          fourcc: MJPG
+      gripper_ctrl_code: 3
+      gripper_command_deadband: 0.005
+      gripper_min_command_interval_s: 0.03
+      gripper_keepalive_s: 0.20
+      cameras: {}
 
 teleop:
   type: uf::dual_pika_teleop
@@ -64,31 +88,58 @@ teleop:
   parallel_read: true
   teleops:
     left:
-      type: uf::pika_teleop
+      type: uf::piper_pika_teleop
       id: left_pika
-      port: /dev/REPLACE_LEFT_PIKA
+      port: /dev/pika_left
       frequency: 100
       use_gripper: true
       scale_xyz: 1.0
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, 150, 250, 180, 0, 0]
+      tracker_device_id: T20
+      use_raw_translation_mapping: true
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: true
+      rotation_dominant_axis: false
+      rotation_scale: 0.75
+      rotation_filter_alpha: 0.4
+      gripper_use_direct_distance: true
+      gripper_distance_min_mm: 0.4
+      gripper_distance_max_mm: 98.1
+      gripper_filter_window: 3
+      gripper_filter_alpha: 0.75
+      gripper_deadband: 0.005
+      gripper_max_step: 0.15
     right:
-      type: uf::pika_teleop
+      type: uf::piper_pika_teleop
       id: right_pika
-      port: /dev/REPLACE_RIGHT_PIKA
+      port: /dev/pika_right
       frequency: 100
       use_gripper: true
       scale_xyz: 1.0
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, -150, 250, 180, 0, 0]
+      tracker_device_id: T21
+      use_raw_translation_mapping: true
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: true
+      rotation_dominant_axis: false
+      rotation_scale: 0.75
+      rotation_filter_alpha: 0.4
+      gripper_use_direct_distance: true
+      gripper_distance_min_mm: 0.4
+      gripper_distance_max_mm: 98.1
+      gripper_filter_window: 3
+      gripper_filter_alpha: 0.75
+      gripper_deadband: 0.005
+      gripper_max_step: 0.15
 
 dataset:
-  root: ./data/dual_pika_piper
+  root: /home/admin1/lerobot_data/dual_pika_piper
   repo_id: local/dual_pika_piper
-  single_task: REPLACE_TASK_DESCRIPTION
-  fps: 30
-  episode_time_s: 60
+  single_task: Bimanual Pika to Piper teleoperation
+  fps: 50
+  episode_time_s: 30
   reset_time_s: 20
   num_episodes: 50
   push_to_hub: false
-
