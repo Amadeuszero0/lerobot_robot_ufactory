@@ -43,7 +43,7 @@ robot:
 teleop:
   type: uf::piper_pika_teleop
   id: pika_piper_movep_direct_final
-  port: /dev/ttyUSB50
+  port: /dev/ttyUSB0
   frequency: 100
   use_gripper: true
   scale_xyz: 1.0
