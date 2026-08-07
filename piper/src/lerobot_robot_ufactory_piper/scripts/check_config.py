@@ -21,17 +21,29 @@ def check(path: Path) -> list[str]:
     robot = data.get("robot", {})
     teleop = data.get("teleop", {})
     dataset = data.get("dataset", {})
-    robots = robot.get("robots", {})
-    teleops = teleop.get("teleops", {})
 
     if not robot.get("type") or not teleop.get("type"):
         errors.append("robot.type and teleop.type are required")
-    if set(robots) != {"left", "right"}:
-        errors.append("robot.robots must contain exactly left and right")
-    if set(teleops) != {"left", "right"}:
-        errors.append("teleop.teleops must contain exactly left and right")
-    if set(robots) != set(teleops):
-        errors.append("robot and teleop side names must match")
+
+    robots = robot.get("robots", {})
+    teleops = teleop.get("teleops", {})
+    if robots or teleops:
+        # Dual-arm structure: robot.robots / teleop.teleops with left/right.
+        if set(robots) != {"left", "right"}:
+            errors.append("robot.robots must contain exactly left and right")
+        if set(teleops) != {"left", "right"}:
+            errors.append("teleop.teleops must contain exactly left and right")
+        if set(robots) != set(teleops):
+            errors.append("robot and teleop side names must match")
+        port_configs = [*robots.values(), *teleops.values()]
+    else:
+        # Single-arm structure: top-level robot/teleop.
+        if not robot.get("port"):
+            errors.append("robot.port is required")
+        if not teleop.get("port"):
+            errors.append("teleop.port is required")
+        port_configs = [robot, teleop]
+
     if not dataset.get("repo_id") or not dataset.get("single_task"):
         errors.append("dataset.repo_id and dataset.single_task are required")
     if _contains_placeholder(data):
@@ -39,7 +51,7 @@ def check(path: Path) -> list[str]:
 
     ports = [
         config.get("port")
-        for config in [*robots.values(), *teleops.values()]
+        for config in port_configs
         if isinstance(config, dict) and config.get("port")
     ]
     if len(ports) != len(set(ports)):
@@ -48,7 +60,7 @@ def check(path: Path) -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Static check for dual-arm Piper YAML files")
+    parser = argparse.ArgumentParser(description="Static check for single/dual Piper YAML files")
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args()
     failed = False
@@ -67,4 +79,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
