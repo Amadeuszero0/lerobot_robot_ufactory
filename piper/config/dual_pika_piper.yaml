@@ -18,7 +18,7 @@ robot:
     left:
       type: uf::piper
       id: left_piper
-      port: can0
+      port: can1
       control_space: cartesian
       configure_role_on_connect: true
       park_on_connect: false
@@ -52,7 +52,7 @@ robot:
     right:
       type: uf::piper
       id: right_piper
-      port: can1
+      port: can0
       control_space: cartesian
       configure_role_on_connect: true
       park_on_connect: false
@@ -96,7 +96,7 @@ teleop:
       scale_xyz: 1.0
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, 150, 250, 180, 0, 0]
-      tracker_device_id: T20
+      tracker_device_id: T21
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: true
@@ -125,7 +125,7 @@ teleop:
       scale_xyz: 1.0
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, -150, 250, 180, 0, 0]
-      tracker_device_id: T21
+      tracker_device_id: T20
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: true
