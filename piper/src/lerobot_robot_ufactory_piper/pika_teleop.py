@@ -193,6 +193,22 @@ class PiperPikaTeleop(_PikaTeleop):
         self._filtered_rotation_delta = None
         self._begin_tracker_rot = None
         self._begin_tracker_senior = None
+        if (
+            enabled
+            and self.config.pose_adaptive_rotation
+            and self.config.rotation_style == "calibrated"
+        ):
+            # Same columns/signs as the derived flipped matrix, but rebuilt for
+            # the current EEF orientation so yaw stays vertical, pitch stays
+            # horizontal and roll stays about the gripper approach axis.
+            r_eef = Transformations.rxryrz_to_rotation_matrix(
+                *self._last_robot_pose[3:6]
+            )
+            e2 = np.array([0.0, 1.0, 0.0])
+            e3 = np.array([0.0, 0.0, 1.0])
+            self._rotation_map = np.column_stack(
+                [-e3, -(r_eef.T @ e2), -(r_eef.T @ e3)]
+            )
         # Begin at the actual Piper gripper position supplied in ``obs`` and
         # approach the Pika value gradually. This avoids a jump on Enter.
         self._filtered_gripper = (

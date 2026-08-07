@@ -182,6 +182,10 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     # senior robot_base control target (world-delta rotation + gripper-center
     # tool offset, translation and rotation coupled through tracker_to_robot_eef).
     rotation_style: str = "calibrated"
+    # Rebuild the calibrated rotation mapping at teleop enable from the actual
+    # end-effector orientation, so pitch/yaw/roll keep the correct axes at any
+    # arm pose (not just the pose used when the matrix was derived).
+    pose_adaptive_rotation: bool = False
     # Fixed rotation from the Vive/Pika tracking world to the robot base, in
     # degrees. Used by rotation_style=senior as Q (world -> base).
     tracker_world_to_robot_base_rpy: tuple[float, ...] = (0, 0, 0)
