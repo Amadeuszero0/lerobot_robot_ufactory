@@ -175,6 +175,9 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     gripper_distance_max_mm: float = 100.0
     use_calibrated_rotation_mapping: bool = False
     apply_piper_tool_axis_correction: bool = False
+    # "calibrated" = fixed-matrix body-frame mapping; "world_delta" = port of
+    # the senior Lerobot-Real robot_base formula (Q @ (R_now R_start^T) @ Q^T).
+    rotation_style: str = "calibrated"
     rotation_dominant_axis: bool = False
     rotation_scale: float = 1.0
     rotation_filter_alpha: float = 1.0
@@ -205,8 +208,10 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
                 "gripper_distance_min_mm must be smaller than "
                 "gripper_distance_max_mm"
             )
-        if not 0 < self.rotation_scale <= 1:
-            raise ValueError("rotation_scale must be in (0, 1]")
+        if self.rotation_scale == 0 or abs(self.rotation_scale) > 1:
+            raise ValueError("rotation_scale must be in [-1, 0) or (0, 1]")
+        if self.rotation_style not in ("calibrated", "world_delta"):
+            raise ValueError("rotation_style must be 'calibrated' or 'world_delta'")
         if not 0 < self.rotation_filter_alpha <= 1:
             raise ValueError("rotation_filter_alpha must be in (0, 1]")
         if self.raw_translation_matrix is not None:

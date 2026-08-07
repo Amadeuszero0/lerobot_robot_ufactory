@@ -171,12 +171,14 @@ class PiperPikaTeleop(_PikaTeleop):
         self._filtered_gripper: float | None = None
         self._last_direct_gripper: float | None = None
         self._filtered_rotation_delta: np.ndarray | None = None
+        self._begin_tracker_rot: np.ndarray | None = None
 
     def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
         super().set_teleop_enabled(enabled, obs)
         self._gripper_samples.clear()
         self._last_direct_gripper = None
         self._filtered_rotation_delta = None
+        self._begin_tracker_rot = None
         # Begin at the actual Piper gripper position supplied in ``obs`` and
         # approach the Pika value gradually. This avoids a jump on Enter.
         self._filtered_gripper = (
@@ -198,37 +200,85 @@ class PiperPikaTeleop(_PikaTeleop):
             origin_rotation = Transformations.rxryrz_to_rotation_matrix(
                 *self._last_robot_pose[3:6]
             )
-            target_rotation = Transformations.rxryrz_to_rotation_matrix(
-                *(float(action[key]) for key in rotation_keys)
-            )
-            relative_rotation = origin_rotation.T @ target_rotation
-            relative_vector = Transformations.rotation_matrix_to_rxryrz(
-                relative_rotation
-            )
-            mapped_vector = self._rotation_map @ relative_vector
-            if self.config.rotation_dominant_axis:
-                dominant_index = int(np.argmax(np.abs(mapped_vector)))
-                dominant_vector = np.zeros(3, dtype=float)
-                dominant_vector[dominant_index] = mapped_vector[dominant_index]
-                mapped_vector = dominant_vector
-            if self.config.rotation_filter_alpha < 1.0:
-                if self._filtered_rotation_delta is None:
-                    self._filtered_rotation_delta = mapped_vector.copy()
-                else:
-                    alpha = self.config.rotation_filter_alpha
-                    self._filtered_rotation_delta = (
-                        alpha * mapped_vector
-                        + (1.0 - alpha) * self._filtered_rotation_delta
-                    )
-                mapped_vector = self._filtered_rotation_delta
-            mapped_vector *= self.config.rotation_scale
-            corrected_rotation = (
-                origin_rotation
-                @ Transformations.rxryrz_to_rotation_matrix(*mapped_vector)
-            )
-            corrected_vector = Transformations.rotation_matrix_to_rxryrz(
-                corrected_rotation
-            )
+            if self.config.rotation_style == "world_delta":
+                # Senior Lerobot-Real robot_base formula: track the tracker's
+                # WORLD-frame rotation delta, conjugated into the robot base:
+                #   target = Q @ (R_now @ R_start^T) @ Q^T @ R_base
+                pose = self.pika_sense.get_pose(
+                    self.pika_device.pika_tracker_device
+                )
+                if pose is None:
+                    return action
+                rotation = np.asarray(pose.rotation, dtype=float)
+                if rotation.shape != (4,) or not np.all(np.isfinite(rotation)):
+                    return action
+                tracker_rotation = (
+                    Transformations.quaternion_to_rotation_matrix(rotation)
+                )
+                if self._begin_tracker_rot is None:
+                    self._begin_tracker_rot = tracker_rotation.copy()
+                delta_world = tracker_rotation @ self._begin_tracker_rot.T
+                delta_vector = np.asarray(
+                    Transformations.rotation_matrix_to_rxryrz(delta_world),
+                    dtype=float,
+                )
+                if self.config.rotation_dominant_axis:
+                    dominant_index = int(np.argmax(np.abs(delta_vector)))
+                    dominant_vector = np.zeros(3, dtype=float)
+                    dominant_vector[dominant_index] = delta_vector[dominant_index]
+                    delta_vector = dominant_vector
+                if self.config.rotation_filter_alpha < 1.0:
+                    if self._filtered_rotation_delta is None:
+                        self._filtered_rotation_delta = delta_vector.copy()
+                    else:
+                        alpha = self.config.rotation_filter_alpha
+                        self._filtered_rotation_delta = (
+                            alpha * delta_vector
+                            + (1.0 - alpha) * self._filtered_rotation_delta
+                        )
+                    delta_vector = self._filtered_rotation_delta
+                delta_vector *= self.config.rotation_scale
+                delta_scaled = Transformations.rxryrz_to_rotation_matrix(
+                    *delta_vector
+                )
+                q = self._raw_to_piper  # world -> robot base rotation
+                target_matrix = q @ delta_scaled @ q.T @ origin_rotation
+                corrected_vector = np.asarray(
+                    Transformations.rotation_matrix_to_rxryrz(target_matrix),
+                    dtype=float,
+                )
+            else:
+                target_rotation = Transformations.rxryrz_to_rotation_matrix(
+                    *(float(action[key]) for key in rotation_keys)
+                )
+                relative_rotation = origin_rotation.T @ target_rotation
+                relative_vector = Transformations.rotation_matrix_to_rxryrz(
+                    relative_rotation
+                )
+                mapped_vector = self._rotation_map @ relative_vector
+                if self.config.rotation_dominant_axis:
+                    dominant_index = int(np.argmax(np.abs(mapped_vector)))
+                    dominant_vector = np.zeros(3, dtype=float)
+                    dominant_vector[dominant_index] = mapped_vector[dominant_index]
+                    mapped_vector = dominant_vector
+                if self.config.rotation_filter_alpha < 1.0:
+                    if self._filtered_rotation_delta is None:
+                        self._filtered_rotation_delta = mapped_vector.copy()
+                    else:
+                        alpha = self.config.rotation_filter_alpha
+                        self._filtered_rotation_delta = (
+                            alpha * mapped_vector
+                            + (1.0 - alpha) * self._filtered_rotation_delta
+                        )
+                    mapped_vector = self._filtered_rotation_delta
+                mapped_vector *= self.config.rotation_scale
+                corrected_rotation = (
+                    origin_rotation
+                    @ Transformations.rxryrz_to_rotation_matrix(*mapped_vector)
+                )
+                corrected_vector = Transformations.rotation_matrix_to_rxryrz(
+                    corrected_rotation
+                )
             for key, value in zip(
                 rotation_keys, corrected_vector, strict=True
             ):
