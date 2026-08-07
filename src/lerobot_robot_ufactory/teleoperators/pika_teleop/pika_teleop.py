@@ -38,7 +38,12 @@ class PikaTeleop(UFBaseTeleop, Thread):
         self._last_robot_pose = Transformations.rotation_matrix_to_xyzrxryrz(self.robot_base_matrix)
         self._last_gripper_pos = 0.0
 
-        self.pika_device = PikaDevice(1, pika_sense_port=self.config.port)
+        # Allow an explicit tracker id (e.g. T20/T21) so startup does not rely
+        # on the SDK device-list auto-detect, which can race and miss trackers.
+        tracker_id = getattr(self.config, 'tracker_device_id', None)
+        self.pika_device = PikaDevice(
+            1, pika_sense_port=self.config.port, pika_tracker_device=tracker_id
+        )
         self.pika_sense = self.pika_device.pika_sense
 
     @property
