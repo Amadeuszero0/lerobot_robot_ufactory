@@ -48,13 +48,23 @@ teleop:
   use_gripper: true
   scale_xyz: 1.0
   tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
-  robot_base_pose: [300, 0, 250, 180, 0, 0]
+  # Must match startup_tcp_pose so the rotation pipeline is skew-free and the
+  # calibrated rotation mapping matrix stays valid at the actual pose.
+  robot_base_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
   tracker_device_id: T20
 
   use_raw_translation_mapping: true
 
   use_calibrated_rotation_mapping: true
   apply_piper_tool_axis_correction: true
+  # Re-derived 2026-08-07 for the startup pose: raw X (Pika roll) -> gripper
+  # approach axis, raw Y (pitch down) -> base +Y, raw Z (yaw) -> base +Z.
+  # Flip a column's sign in this YAML if a direction feels inverted.
+  rotation_mapping_matrix: [
+    [0.000000000, -0.991000235, 0.130526192],
+    [0.000000000, -0.047154810, -0.547979619],
+    [1.000000000, -0.125279522, -0.826245272],
+  ]
   rotation_dominant_axis: false
   rotation_scale: 1.0
   rotation_filter_alpha: 0.4

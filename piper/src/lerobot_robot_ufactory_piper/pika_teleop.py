@@ -155,6 +155,16 @@ class PiperPikaTeleop(_PikaTeleop):
 
     def __init__(self, config: PiperPikaTeleopConfig, prefix: str = "") -> None:
         super().__init__(config, prefix=prefix)
+        if config.rotation_mapping_matrix is not None:
+            self._rotation_map = np.asarray(
+                config.rotation_mapping_matrix, dtype=float
+            )
+        elif config.apply_piper_tool_axis_correction:
+            self._rotation_map = (
+                _PIPER_TOOL_AXIS_CORRECTION @ _PIKA_TO_PIPER_ROTATION
+            )
+        else:
+            self._rotation_map = _PIKA_TO_PIPER_ROTATION
         self._gripper_samples: deque[float] = deque(
             maxlen=config.gripper_filter_window
         )
@@ -195,11 +205,7 @@ class PiperPikaTeleop(_PikaTeleop):
             relative_vector = Transformations.rotation_matrix_to_rxryrz(
                 relative_rotation
             )
-            mapped_vector = (
-                _PIKA_TO_PIPER_ROTATION @ relative_vector
-            )
-            if self.config.apply_piper_tool_axis_correction:
-                mapped_vector = _PIPER_TOOL_AXIS_CORRECTION @ mapped_vector
+            mapped_vector = self._rotation_map @ relative_vector
             if self.config.rotation_dominant_axis:
                 dominant_index = int(np.argmax(np.abs(mapped_vector)))
                 dominant_vector = np.zeros(3, dtype=float)
