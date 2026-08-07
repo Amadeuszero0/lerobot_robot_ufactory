@@ -172,6 +172,18 @@ class PiperPikaTeleop(_PikaTeleop):
         self._last_direct_gripper: float | None = None
         self._filtered_rotation_delta: np.ndarray | None = None
         self._begin_tracker_rot: np.ndarray | None = None
+        self._begin_tracker_senior: tuple[np.ndarray, np.ndarray] | None = None
+        if config.rotation_style == "senior":
+            world_to_base_rpy = tuple(
+                math.radians(float(v))
+                for v in config.tracker_world_to_robot_base_rpy
+            )
+            self._senior_q = Transformations.rpy_to_rotation_matrix(
+                *world_to_base_rpy
+            )
+            self._senior_eef_to_tracker = np.linalg.inv(
+                self.tracker_to_robot_matrix
+            )
 
     def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
         super().set_teleop_enabled(enabled, obs)
@@ -179,6 +191,7 @@ class PiperPikaTeleop(_PikaTeleop):
         self._last_direct_gripper = None
         self._filtered_rotation_delta = None
         self._begin_tracker_rot = None
+        self._begin_tracker_senior = None
         # Begin at the actual Piper gripper position supplied in ``obs`` and
         # approach the Pika value gradually. This avoids a jump on Enter.
         self._filtered_gripper = (
@@ -200,7 +213,57 @@ class PiperPikaTeleop(_PikaTeleop):
             origin_rotation = Transformations.rxryrz_to_rotation_matrix(
                 *self._last_robot_pose[3:6]
             )
-            if self.config.rotation_style == "world_delta":
+            if self.config.rotation_style == "senior":
+                # Full senior Lerobot-Real robot_base control target:
+                #   G (gripper center) = Q @ (R_now R_start^T) @ Q^T @ G_base
+                #   p_G = p_G0 + Q @ (p_now - p_start);  S (J6) = G @ E^-1
+                pose = self.pika_sense.get_pose(
+                    self.pika_device.pika_tracker_device
+                )
+                if pose is None:
+                    return action
+                position = np.asarray(pose.position, dtype=float)
+                rotation = np.asarray(pose.rotation, dtype=float)
+                if (
+                    position.shape != (3,)
+                    or rotation.shape != (4,)
+                    or not np.all(np.isfinite(position))
+                    or not np.all(np.isfinite(rotation))
+                ):
+                    return action
+                p_now = position * 1000.0 * self.config.scale_xyz
+                r_now = Transformations.quaternion_to_rotation_matrix(rotation)
+                if self._begin_tracker_senior is None:
+                    self._begin_tracker_senior = (p_now.copy(), r_now.copy())
+                p0, r0 = self._begin_tracker_senior
+                delta_rot = r_now @ r0.T
+                q = self._senior_q
+                gripper_base = (
+                    self.robot_base_matrix @ self._senior_eef_to_tracker
+                )
+                target_gripper = np.eye(4)
+                target_gripper[:3, :3] = (
+                    q @ delta_rot @ q.T @ gripper_base[:3, :3]
+                )
+                target_gripper[:3, 3] = (
+                    gripper_base[:3, 3] + q @ (p_now - p0)
+                )
+                robot_target = target_gripper @ self.tracker_to_robot_matrix
+                senior_vec = np.asarray(
+                    Transformations.rotation_matrix_to_xyzrxryrz(robot_target),
+                    dtype=float,
+                )
+                pose_keys = (
+                    f"{self.prefix}pose.x",
+                    f"{self.prefix}pose.y",
+                    f"{self.prefix}pose.z",
+                    f"{self.prefix}pose.rx",
+                    f"{self.prefix}pose.ry",
+                    f"{self.prefix}pose.rz",
+                )
+                for key, value in zip(pose_keys, senior_vec, strict=True):
+                    action[key] = float(value)
+            elif self.config.rotation_style == "world_delta":
                 # Senior Lerobot-Real robot_base formula: track the tracker's
                 # WORLD-frame rotation delta, conjugated into the robot base:
                 #   target = Q @ (R_now @ R_start^T) @ Q^T @ R_base
