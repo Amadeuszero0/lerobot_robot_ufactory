@@ -1,3 +1,5 @@
+import math
+
 from dataclasses import dataclass, field
 from lerobot.cameras import CameraConfig
 from lerobot.robots import RobotConfig
