@@ -311,6 +311,10 @@ class PiperPikaTeleop(_PikaTeleop):
                     Transformations.rotation_matrix_to_rxryrz(target_matrix),
                     dtype=float,
                 )
+                for key, value in zip(
+                    rotation_keys, corrected_vector, strict=True
+                ):
+                    action[key] = float(value)
             else:
                 target_rotation = Transformations.rxryrz_to_rotation_matrix(
                     *(float(action[key]) for key in rotation_keys)
@@ -343,10 +347,10 @@ class PiperPikaTeleop(_PikaTeleop):
                 corrected_vector = Transformations.rotation_matrix_to_rxryrz(
                     corrected_rotation
                 )
-            for key, value in zip(
-                rotation_keys, corrected_vector, strict=True
-            ):
-                action[key] = float(value)
+                for key, value in zip(
+                    rotation_keys, corrected_vector, strict=True
+                ):
+                    action[key] = float(value)
 
         if not self.config.use_gripper or not self._teleop_enabled:
             return action
