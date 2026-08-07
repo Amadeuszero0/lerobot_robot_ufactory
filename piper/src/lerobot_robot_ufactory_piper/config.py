@@ -184,6 +184,11 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     # measured module-level matrix).
     tracker_device_id: str | None = None
     raw_translation_matrix: tuple[tuple[float, float, float], ...] | None = None
+    # Override the calibrated rotation mapping (raw tracker relative rotation
+    # vector -> EEF-local rotation vector) when re-derived for a specific
+    # pose. Columns are the mapped directions for raw X (roll), raw Y (pitch),
+    # raw Z (yaw). None keeps the built-in calibrated matrices.
+    rotation_mapping_matrix: tuple[tuple[float, float, float], ...] | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -209,3 +214,8 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
                 len(row) != 3 for row in self.raw_translation_matrix
             ):
                 raise ValueError("raw_translation_matrix must be a 3x3 matrix")
+        if self.rotation_mapping_matrix is not None:
+            if len(self.rotation_mapping_matrix) != 3 or any(
+                len(row) != 3 for row in self.rotation_mapping_matrix
+            ):
+                raise ValueError("rotation_mapping_matrix must be a 3x3 matrix")

@@ -30,16 +30,17 @@ _PIKA_TO_PIPER_TRANSLATION = np.array(
 )
 
 # Calibrated from three Pika-only gestures on 2026-08-03.
-# Measured 2026-08-05 with piper/tools/measure_pika_piper_mapping.py. Maps raw
-# tracker deltas in the lighthouse/world frame directly to the Piper base
-# frame: Pika forward -> Piper +X, Pika right -> Piper -Y, Pika up -> +Z.
-# Kabsch fit error was ~1 degree. This replaces the old fitted matrix, which
-# mapped forward to (0.52, -0.74, -0.43) instead of +X.
+# Re-fit on the new server (star, 2026-08-07) with
+# piper/tools/measure_pika_piper_mapping.py for the current lighthouse/world
+# frame. Maps raw tracker deltas in the lighthouse/world frame directly to the
+# Piper base frame: Pika forward -> Piper +X, Pika right -> Piper -Y,
+# Pika up -> +Z. The fit is within ~4 degrees of the previous matrix, i.e. the
+# world frame is essentially unchanged.
 _RAW_TO_PIPER_TRANSLATION = np.array(
     [
-        [0.908157378, -0.375801932, -0.184453476],
-        [0.381913658, 0.924194400, -0.002582414],
-        [0.171441346, -0.068100063, 0.982837854],
+        [0.884906701, -0.441374693, -0.148756551],
+        [0.441254089, 0.896674458, -0.035633477],
+        [0.149113915, -0.034107134, 0.988231625],
     ],
     dtype=float,
 )
@@ -154,6 +155,16 @@ class PiperPikaTeleop(_PikaTeleop):
 
     def __init__(self, config: PiperPikaTeleopConfig, prefix: str = "") -> None:
         super().__init__(config, prefix=prefix)
+        if config.rotation_mapping_matrix is not None:
+            self._rotation_map = np.asarray(
+                config.rotation_mapping_matrix, dtype=float
+            )
+        elif config.apply_piper_tool_axis_correction:
+            self._rotation_map = (
+                _PIPER_TOOL_AXIS_CORRECTION @ _PIKA_TO_PIPER_ROTATION
+            )
+        else:
+            self._rotation_map = _PIKA_TO_PIPER_ROTATION
         self._gripper_samples: deque[float] = deque(
             maxlen=config.gripper_filter_window
         )
@@ -194,11 +205,7 @@ class PiperPikaTeleop(_PikaTeleop):
             relative_vector = Transformations.rotation_matrix_to_rxryrz(
                 relative_rotation
             )
-            mapped_vector = (
-                _PIKA_TO_PIPER_ROTATION @ relative_vector
-            )
-            if self.config.apply_piper_tool_axis_correction:
-                mapped_vector = _PIPER_TOOL_AXIS_CORRECTION @ mapped_vector
+            mapped_vector = self._rotation_map @ relative_vector
             if self.config.rotation_dominant_axis:
                 dominant_index = int(np.argmax(np.abs(mapped_vector)))
                 dominant_vector = np.zeros(3, dtype=float)
