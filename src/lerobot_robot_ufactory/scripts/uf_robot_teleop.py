@@ -118,62 +118,65 @@ def teleop_loop(cfg: TeleopConfig):
     key_space_pressed = False
     key_left_pressed = False
 
-    while not events["exit"]:
-        start_loop_t = time.perf_counter()
+    try:
+        while not events["exit"]:
+            start_loop_t = time.perf_counter()
 
-        if is_evt:
-            if key_dict[keyboard.Key.left] and not key_left_pressed:
-                key_left_pressed = True
-                is_reset = True
-                if not is_paused:
-                    is_paused = True
-                    if is_uf_teleop:
-                        teleop.set_teleop_enabled(False)
-                print('⌨   [ESC] Exit  [Space] Reset / Start  [←] Reset')
-            elif not key_dict[keyboard.Key.left] and key_left_pressed:
-                key_left_pressed = False
+            if is_evt:
+                if key_dict[keyboard.Key.left] and not key_left_pressed:
+                    key_left_pressed = True
+                    is_reset = True
+                    if not is_paused:
+                        is_paused = True
+                        if is_uf_teleop:
+                            teleop.set_teleop_enabled(False)
+                    print('⌨   [ESC] Exit  [Space] Reset / Start  [←] Reset')
+                elif not key_dict[keyboard.Key.left] and key_left_pressed:
+                    key_left_pressed = False
 
-            if key_dict[keyboard.Key.space] and not key_space_pressed:
-                key_space_pressed = True
-                is_paused = not is_paused
-                if is_paused:
-                    if is_uf_teleop:
-                        teleop.set_teleop_enabled(False)
-                    # print('========== Teleop is paused ==========')
-                    print('⌨   [ESC] Exit  [Space] Start  [←] Reset')
-                else:
-                    if is_reset:
-                        is_reset = False
-                        robot.configure()
-                    # print('========== Teleop is start ==========')
-                    if is_uf_teleop:
-                        obs = robot.get_observation()
-                        teleop.set_teleop_enabled(True, obs)
-                    print('⌨   [ESC] Exit  [Space] Pause  [←] Reset')
-                continue
-            elif not key_dict[keyboard.Key.space] and key_space_pressed:
-                key_space_pressed = False
+                if key_dict[keyboard.Key.space] and not key_space_pressed:
+                    key_space_pressed = True
+                    is_paused = not is_paused
+                    if is_paused:
+                        if is_uf_teleop:
+                            teleop.set_teleop_enabled(False)
+                        # print('========== Teleop is paused ==========')
+                        print('⌨   [ESC] Exit  [Space] Start  [←] Reset')
+                    else:
+                        if is_reset:
+                            is_reset = False
+                            robot.configure()
+                        # print('========== Teleop is start ==========')
+                        if is_uf_teleop:
+                            obs = robot.get_observation()
+                            teleop.set_teleop_enabled(True, obs)
+                        print('⌨   [ESC] Exit  [Space] Pause  [←] Reset')
+                    continue
+                elif not key_dict[keyboard.Key.space] and key_space_pressed:
+                    key_space_pressed = False
 
-            if is_reset or is_paused:
-                continue
+                if is_reset or is_paused:
+                    continue
 
-        # Get robot observation
-        obs = robot.get_observation()
+            # Get robot observation
+            obs = robot.get_observation()
 
-        act = teleop.get_action()
-        act_processed_teleop = teleop_action_processor((act, obs))
+            act = teleop.get_action()
+            act_processed_teleop = teleop_action_processor((act, obs))
 
-        robot_action_to_send = robot_action_processor((act_processed_teleop, obs))
-        robot.send_action(robot_action_to_send)
+            robot_action_to_send = robot_action_processor((act_processed_teleop, obs))
+            robot.send_action(robot_action_to_send)
 
-        dt_s = time.perf_counter() - start_loop_t
-        precise_sleep(sleep_time_s - dt_s)
-    
-    print("\n********** Teleop Control Loop Exit **********")
-    robot.disconnect()
-    teleop.disconnect()
-    if is_evt and listener is not None:
-        listener.stop()
+            dt_s = time.perf_counter() - start_loop_t
+            precise_sleep(sleep_time_s - dt_s)
+    finally:
+        print("\n********** Teleop Control Loop Exit **********")
+        try:
+            robot.disconnect()
+        finally:
+            teleop.disconnect()
+        if is_evt and listener is not None:
+            listener.stop()
 
 @parser.wrap()
 def get_cfg(cfg: TeleopConfig) -> TeleopConfig:
