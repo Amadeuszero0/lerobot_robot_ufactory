@@ -1,7 +1,6 @@
-# Pika -> Piper movep_direct_final (first final): MOVE P direct + single-cycle caps.
-# Direct mode (full target) plus a LARGE per-cycle cap (25 mm / 0.35 rad)
-# so fast gestures cannot stall the firmware MOVE P replanner with giant
-# single-cycle jumps. Slow/medium motion behaves exactly like V16 direct.
+# Pika -> Piper movep_direct_v1_final（第一版终稿）: MOVE P direct + 单周期限幅。
+# 继承 V17 已验证的 bounded direct（25 mm / 0.35 rad）：慢速/中速行为等同满目标
+# 直发，快速甩动被限制住，避免固件 MOVE P 重新规划大轨迹时卡顿。
 robot:
   type: uf::piper
   id: piper_follower
@@ -19,10 +18,9 @@ robot:
   max_rotation_step_rad: 0.10
   max_cartesian_following_error_mm: 600.0
   max_rotation_following_error_rad: 3.2
-  # Senior-style full-target direct (no per-cycle caps); MOVE P replans each
-  # cycle at the configured speed. Re-enable caps only if the firmware stalls.
-  direct_max_step_mm: null
-  direct_max_step_rad: null
+  # V17 bounded direct: 大但有限的单周期上限，防固件重规划卡顿。
+  direct_max_step_mm: 25.0
+  direct_max_step_rad: 0.35
   translation_deadband_mm: 0.5
   rotation_deadband_rad: 0.004
   workspace_x: [50.0, 600.0]
@@ -45,7 +43,7 @@ robot:
 
 teleop:
   type: uf::piper_pika_teleop
-  id: pika_piper_movep_direct_final
+  id: pika_piper_movep_direct_v1_final
   port: /dev/ttyUSB50
   frequency: 100
   use_gripper: true
@@ -64,13 +62,12 @@ teleop:
   # the flipped matrix on this machine gives correct directions). Immune to
   # the arbitrary lighthouse world-frame anchor that breaks world-delta modes.
   rotation_style: calibrated
-  # Re-derived 2026-08-07 for the startup pose: raw X (Pika roll) -> gripper
-  # approach axis, raw Y (pitch down) -> base +Y, raw Z (yaw) -> base +Z.
-  # Flip a column's sign in this YAML if a direction feels inverted.
+  # 本机验证过的方向正确版本（2026-08-07 取反后确认）。某轴方向反了就在
+  # 对应列取反：第 1 列=滚转、第 2 列=低头、第 3 列=扭腕。
   rotation_mapping_matrix: [
-    [0.000000000, -0.991000235, 0.130526192],
-    [0.000000000, -0.047154810, -0.547979619],
-    [1.000000000, -0.125279522, -0.826245272],
+    [0.000000000, 0.991000235, -0.130526192],
+    [0.000000000, 0.047154810, 0.547979619],
+    [-1.000000000, 0.125279522, 0.826245272],
   ]
   rotation_dominant_axis: false
   rotation_scale: 1.0
@@ -87,9 +84,9 @@ teleop:
 fps: 50
 
 dataset:
-  root: /home/admin1/lerobot_data/single_pika_piper_movep_direct_final
-  repo_id: local/single_pika_piper_movep_direct_final
-  single_task: Pika to Piper MOVE P direct teleoperation (final v1)
+  root: /home/admin1/lerobot_data/single_pika_piper_movep_direct_v1_final
+  repo_id: local/single_pika_piper_movep_direct_v1_final
+  single_task: Pika to Piper MOVE P direct teleoperation (v1 final)
   fps: 50
   episode_time_s: 10
   reset_time_s: 20

@@ -1,4 +1,4 @@
-# Pika -> Piper movep_step: MOVE P step-limited teleoperation (was V14).
+# Pika -> Piper movep_step_v14（V14 保留版）: MOVE P 阶梯限幅遥操。
 # User feedback on V13: the Piper only follows at a constant speed and falls
 # behind when the Pika accelerates (plus slight jitter). MOVE P plans each
 # segment at a fixed speed, so the two caps that bind during acceleration are
@@ -37,7 +37,7 @@ robot:
 
 teleop:
   type: uf::piper_pika_teleop
-  id: pika_piper_movep_step
+  id: pika_piper_movep_step_v14
   port: /dev/ttyUSB50
   frequency: 100
   use_gripper: true
@@ -65,8 +65,8 @@ teleop:
 fps: 50
 
 dataset:
-  root: /home/admin1/lerobot_data/single_pika_piper_movep_step
-  repo_id: local/single_pika_piper_movep_step
+  root: /home/admin1/lerobot_data/single_pika_piper_movep_step_v14
+  repo_id: local/single_pika_piper_movep_step_v14
   single_task: Pika to Piper MOVE P step teleoperation
   fps: 50
   episode_time_s: 10

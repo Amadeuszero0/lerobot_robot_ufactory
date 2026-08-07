@@ -1,4 +1,4 @@
-# Pika -> Piper 录制测试配置：movep_direct_final + Intel D435i RGB。
+# Pika -> Piper 录制配置：movep_direct_v1_final + Intel D435i RGB。
 # 只采集 Intel 相机 RGB 和 Piper 位姿/夹爪数据（Piper 上未装腕部相机）。
 # 注意：LeRobot 0.4.3 未注册 realsense 类型（需 pyrealsense2），这里用
 # opencv 直接读 D435i 的 RGB 视频节点（video-index0）。
@@ -19,8 +19,8 @@ robot:
   max_rotation_step_rad: 0.10
   max_cartesian_following_error_mm: 600.0
   max_rotation_following_error_rad: 3.2
-  direct_max_step_mm: null
-  direct_max_step_rad: null
+  direct_max_step_mm: 25.0
+  direct_max_step_rad: 0.35
   translation_deadband_mm: 0.5
   rotation_deadband_rad: 0.004
   workspace_x: [50.0, 600.0]
@@ -49,7 +49,7 @@ robot:
 
 teleop:
   type: uf::piper_pika_teleop
-  id: pika_piper_movep_direct_record
+  id: pika_piper_movep_direct_v1_final_record
   port: /dev/ttyUSB50
   frequency: 100
   use_gripper: true
@@ -68,9 +68,9 @@ teleop:
   # Re-derived 2026-08-07 for the startup pose: raw X (Pika roll) -> gripper
   # approach axis, raw Y (pitch down) -> base +Y, raw Z (yaw) -> base +Z.
   rotation_mapping_matrix: [
-    [0.000000000, -0.991000235, 0.130526192],
-    [0.000000000, -0.047154810, -0.547979619],
-    [1.000000000, -0.125279522, -0.826245272],
+    [0.000000000, 0.991000235, -0.130526192],
+    [0.000000000, 0.047154810, 0.547979619],
+    [-1.000000000, 0.125279522, 0.826245272],
   ]
   rotation_dominant_axis: false
   rotation_scale: 1.0
@@ -85,8 +85,8 @@ teleop:
   gripper_max_step: 0.15
 
 dataset:
-  root: /home/admin1/lerobot_data/pika_piper_record_test01
-  repo_id: local/pika_piper_record_test01
+  root: /home/admin1/lerobot_data/single_pika_piper_movep_direct_v1_final_record
+  repo_id: local/single_pika_piper_movep_direct_v1_final_record
   single_task: Move the object with the Piper arm
   fps: 30
   episode_time_s: 10
