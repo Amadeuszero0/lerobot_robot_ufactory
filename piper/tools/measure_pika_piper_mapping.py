@@ -176,6 +176,12 @@ def _kabsch_matrix(src_dirs, dst_dirs) -> np.ndarray:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", default="/dev/ttyUSB50")
+    parser.add_argument(
+        "--tracker",
+        default=None,
+        help="explicit tracker id (e.g. T20) to skip the SDK device-list "
+        "auto-detect, which can race and miss trackers",
+    )
     parser.add_argument("--scale", type=float, default=0.8, help="scale_xyz (mm command)")
     parser.add_argument("--rotation-scale", type=float, default=0.75, dest="rotation_scale")
     parser.add_argument("--samples", type=int, default=40)
@@ -183,7 +189,9 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=2.0)
     args = parser.parse_args()
 
-    pika = PikaDevice(1, pika_sense_port=args.port)
+    pika = PikaDevice(
+        1, pika_sense_port=args.port, pika_tracker_device=args.tracker
+    )
     sense = pika.pika_sense
     dev = pika.pika_tracker_device
     print(f"Tracker device: {dev}")
