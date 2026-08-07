@@ -30,7 +30,9 @@ robot:
   workspace_z: [50.0, 600.0]
   move_mode: move_p
   move_speed_percent: 50
-  startup_tcp_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
+  # No forced startup pose: the user positions the arm manually so the wrist
+  # has free pitch range both ways. Teleop uses the actual pose as reference.
+  startup_tcp_pose: null
   startup_move_timeout_s: 30
 
   send_gripper: true
@@ -48,9 +50,7 @@ teleop:
   frequency: 100
   use_gripper: true
   scale_xyz: 1.0
-  # Senior tool frame: tracker mounted at the gripper center (E^-1 in the
-  # senior Lerobot-Real convention, 190 mm along the tool axis).
-  tracker_to_robot_eef: [-190, 0, 0, 0, 90, 0]
+  tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
   # Must match startup_tcp_pose so the rotation pipeline is skew-free and the
   # calibrated rotation mapping matrix stays valid at the actual pose.
   robot_base_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
@@ -60,11 +60,10 @@ teleop:
 
   use_calibrated_rotation_mapping: true
   apply_piper_tool_axis_correction: true
-  # senior = full Lerobot-Real robot_base control target: world-delta rotation
-  # conjugated by Q, and the 190 mm gripper-center control point, so the wrist
-  # pitches naturally instead of lifting the elbow.
-  rotation_style: senior
-  tracker_world_to_robot_base_rpy: [-1.976682, -8.57558, 26.502898]
+  # calibrated = local/body-frame rotation (uses rotation_mapping_matrix;
+  # the flipped matrix on this machine gives correct directions). Immune to
+  # the arbitrary lighthouse world-frame anchor that breaks world-delta modes.
+  rotation_style: calibrated
   # Re-derived 2026-08-07 for the startup pose: raw X (Pika roll) -> gripper
   # approach axis, raw Y (pitch down) -> base +Y, raw Z (yaw) -> base +Z.
   # Flip a column's sign in this YAML if a direction feels inverted.
