@@ -176,8 +176,13 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     use_calibrated_rotation_mapping: bool = False
     apply_piper_tool_axis_correction: bool = False
     # "calibrated" = fixed-matrix body-frame mapping; "world_delta" = port of
-    # the senior Lerobot-Real robot_base formula (Q @ (R_now R_start^T) @ Q^T).
+    # the senior Lerobot-Real robot_base rotation only; "senior" = the full
+    # senior robot_base control target (world-delta rotation + gripper-center
+    # tool offset, translation and rotation coupled through tracker_to_robot_eef).
     rotation_style: str = "calibrated"
+    # Fixed rotation from the Vive/Pika tracking world to the robot base, in
+    # degrees. Used by rotation_style=senior as Q (world -> base).
+    tracker_world_to_robot_base_rpy: tuple[float, ...] = (0, 0, 0)
     rotation_dominant_axis: bool = False
     rotation_scale: float = 1.0
     rotation_filter_alpha: float = 1.0
@@ -210,8 +215,16 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             )
         if self.rotation_scale == 0 or abs(self.rotation_scale) > 1:
             raise ValueError("rotation_scale must be in [-1, 0) or (0, 1]")
-        if self.rotation_style not in ("calibrated", "world_delta"):
-            raise ValueError("rotation_style must be 'calibrated' or 'world_delta'")
+        if self.rotation_style not in ("calibrated", "world_delta", "senior"):
+            raise ValueError(
+                "rotation_style must be 'calibrated', 'world_delta' or 'senior'"
+            )
+        if len(self.tracker_world_to_robot_base_rpy) != 3 or not all(
+            math.isfinite(value) for value in self.tracker_world_to_robot_base_rpy
+        ):
+            raise ValueError(
+                "tracker_world_to_robot_base_rpy must contain three finite values"
+            )
         if not 0 < self.rotation_filter_alpha <= 1:
             raise ValueError("rotation_filter_alpha must be in (0, 1]")
         if self.raw_translation_matrix is not None:
