@@ -61,9 +61,9 @@ teleop:
   # approach axis, raw Y (pitch down) -> base +Y, raw Z (yaw) -> base +Z.
   # Flip a column's sign in this YAML if a direction feels inverted.
   rotation_mapping_matrix: [
-    [0.000000000, -0.991000235, 0.130526192],
-    [0.000000000, -0.047154810, -0.547979619],
-    [1.000000000, -0.125279522, -0.826245272],
+    [0.000000000, 0.991000235, -0.130526192],
+    [0.000000000, 0.047154810, 0.547979619],
+    [-1.000000000, 0.125279522, 0.826245272],
   ]
   rotation_dominant_axis: false
   rotation_scale: 1.0
