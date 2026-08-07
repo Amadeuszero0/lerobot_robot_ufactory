@@ -49,6 +49,7 @@ teleop:
   scale_xyz: 1.0
   tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
   robot_base_pose: [300, 0, 250, 180, 0, 0]
+  tracker_device_id: T20
 
   use_raw_translation_mapping: true
 

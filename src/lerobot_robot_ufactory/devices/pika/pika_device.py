@@ -124,7 +124,7 @@ class PikaDevice(object):
         if use_pika_gripper:
             print('Pika Gripper 设备:', self._pika_gripper_port)
 
-        self.pika_tracker_device = None
+        self.pika_tracker_device = kwargs.get('pika_tracker_device', None)
     
     # def __new__(cls, *args, **kwargs):
     #     if not cls._instance:
@@ -169,32 +169,34 @@ class PikaDevice(object):
             logger.info('Vive Tracker初始化成功')
             time.sleep(2)
 
-            devices = []
-            expired_time = time.monotonic() + 15.0
-            while time.monotonic() < expired_time:
-                devices = self._pika_sense.get_tracker_devices()
-                tracker_devices = [device for device in devices if not device.startswith('LH')]
-                if tracker_devices:
-                    break
-                time.sleep(0.5)
-            if not devices:
-                logger.error('未检测到Vive Tracker设备')
-                self._pika_sense.disconnect()
-                exit(1)
-            logger.info('检测到Vive Tracker设备: {}'.format(devices))
-
-            self.pika_tracker_device = None
-            tracker_devices = [device for device in devices if not device.startswith('LH')]
-            if not tracker_devices:
-                logger.error('No Pika tracker found; only lighthouse devices were detected: {}'.format(devices))
-                self._pika_sense.disconnect()
-                exit(1)
-            for device in tracker_devices:
-                if device.startswith('WM'):
-                    self.pika_tracker_device = device
-                    break
+            if self.pika_tracker_device:
+                logger.info('使用配置指定的Tracker设备: {}'.format(self.pika_tracker_device))
             else:
-                self.pika_tracker_device = tracker_devices[0]
+                devices = []
+                expired_time = time.monotonic() + 15.0
+                while time.monotonic() < expired_time:
+                    devices = self._pika_sense.get_tracker_devices()
+                    tracker_devices = [device for device in devices if not device.startswith('LH')]
+                    if tracker_devices:
+                        break
+                    time.sleep(0.5)
+                if not devices:
+                    logger.error('未检测到Vive Tracker设备')
+                    self._pika_sense.disconnect()
+                    exit(1)
+                logger.info('检测到Vive Tracker设备: {}'.format(devices))
+
+                tracker_devices = [device for device in devices if not device.startswith('LH')]
+                if not tracker_devices:
+                    logger.error('No Pika tracker found; only lighthouse devices were detected: {}'.format(devices))
+                    self._pika_sense.disconnect()
+                    exit(1)
+                for device in tracker_devices:
+                    if device.startswith('WM'):
+                        self.pika_tracker_device = device
+                        break
+                else:
+                    self.pika_tracker_device = tracker_devices[0]
             logger.info('开始跟踪设备: {}\n'.format(self.pika_tracker_device))
         return self._pika_sense
     
