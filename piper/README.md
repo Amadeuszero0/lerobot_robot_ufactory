@@ -25,8 +25,8 @@ piper/
 |---|---|---|
 | `single_pika_piper_movep_step_v14.yaml` | V14 保留 | MOVE P 阶梯限幅，每周期小步，保守稳定，慢速精细任务 |
 | `single_pika_piper_joint_stream_v15.yaml` | V15 保留 | 关节空间流式（纯 numpy IK），绕开固件 IK 抖动，进阶（先做手眼标定） |
-| `single_pika_piper_movep_direct_v1_final.yaml` | **第一版终稿** | MOVE P 直通 + 单周期限幅（bounded direct，25 mm / 0.35 rad），顺滑跟手，日常采集推荐 |
-| `single_pika_piper_movep_direct_v1_final_record.yaml` | 终稿录制版 | 同上 + Intel D435i RGB 相机（相机路径按机器修改） |
+| `single_pika_piper_setting.yaml` | **单臂终稿**（原 v1_final） | MOVE P 直通 + 单周期限幅（bounded direct，25 mm / 0.35 rad），顺滑跟手，日常采集推荐 |
+| `single_pika_piper_setting_record.yaml` | 单臂录制版 | 同上 + Intel D435i RGB 相机（相机路径按机器修改） |
 | `single_pika_piper.yaml` | 基础模板 | 占位符模板，替换 CAN/相机/数据集后使用 |
 
 双臂配置（不参与单臂版本编号）：`dual_pika_direct.yaml`（只采集）、`dual_pika_piper.yaml`（Pika 控双臂）、`dual_piper_leader_follower.yaml`（Piper 主从）。
@@ -43,7 +43,7 @@ piper/
 | 旋转映射 | 固定矩阵（旧服务器方向正确） | 同 | 本地坐标系校准矩阵（新服务器方向正确，翻转矩阵在机器上验证） |
 | tracker 绑定 | SDK 自动检测（有竞态） | 同 | 显式 `tracker_device_id: T20` |
 
-结论：当前 v1_final 保留了 V17 已验证的防卡顿限幅和跟手直通，同时修正了 tracker 检测竞态与旋转方向，并把启动摆位改为手动（手腕活动范围更好）。
+结论：当前 single_pika_piper_setting 保留了 V17 已验证的防卡顿限幅和跟手直通，同时修正了 tracker 检测竞态与旋转方向，并把启动摆位改为手动（手腕活动范围更好）。
 
 ## 安装
 
@@ -69,15 +69,39 @@ timeout 3 candump can0            # 应能收到 2A1~2A8 反馈帧
 
 ```bash
 # 单臂遥操作（推荐）
-uf-piper-teleop --config_path=piper/config/single_pika_piper_movep_direct_v1_final.yaml
+uf-piper-teleop --config_path=piper/config/single_pika_piper_setting.yaml
 
 # 录制（带 D435i RGB；相机路径需匹配当前机器）
-uf-piper-record --config_path=piper/config/single_pika_piper_movep_direct_v1_final_record.yaml
+uf-piper-record --config_path=piper/config/single_pika_piper_setting_record.yaml
 ```
 
 交互（headless / SSH）：回车开始；录制满一个 episode 时长后回车保存并进入下一个；Ctrl+C 退出。
 
 ## 常用命令速查
+
+### 双臂（双 Pika 遥操作双 Piper）
+
+```bash
+uf-piper-teleop --config_path=piper/config/dual_pika_piper.yaml
+```
+
+首次使用前需要：
+
+1. **固定两个 Pika 串口**（两个 CH340 无序列号、by-id 相同，必须按 USB 物理口固定）：
+   ```bash
+   udevadm info -a -n /dev/ttyUSB0 | grep KERNELS   # 分别对两个口执行，记下物理路径
+   sudo tee /etc/udev/rules.d/98-pika-left-right.rules <<'EOF'
+   SUBSYSTEM=="tty", ENV{ID_PATH}=="pci-0000:XX:00.0-usb-0:2.4:1.0", MODE:="0666", GROUP="dialout", SYMLINK+="pika_left"
+   SUBSYSTEM=="tty", ENV{ID_PATH}=="pci-0000:XX:00.0-usb-0:1.4:1.0", MODE:="0666", GROUP="dialout", SYMLINK+="pika_right"
+   EOF
+   sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=tty
+   ls -l /dev/pika_left /dev/pika_right
+   ```
+2. **确认两个 CAN 接口**（can0 / can1）对应哪只手臂，开机后 `ip link show | grep can` 确认实际名字，并按上文 CAN 配置拉起两个口。
+3. **确认两个 tracker 都开机可见**（T20 / T21），用测量工具确认左右绑定，不对就在 `dual_pika_piper.yaml` 里交换 `tracker_device_id`。
+4. 手动把左右臂摆到镜像安全位姿再开始（配置不自动摆位）。
+
+双臂配置已对齐单臂终稿参数（calibrated 旋转 + 翻转矩阵、速度 70、滤波 0.8、25/0.35 限幅）。
 
 ### 环境与安装
 
