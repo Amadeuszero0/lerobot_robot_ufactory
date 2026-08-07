@@ -18,7 +18,8 @@ robot:
     left:
       type: uf::piper
       id: left_piper
-      port: can1
+      # udev 固定名（按 USB 物理口）：左臂 CAN 适配器 -> can_left
+      port: can_left
       control_space: cartesian
       configure_role_on_connect: true
       park_on_connect: false
@@ -52,7 +53,8 @@ robot:
     right:
       type: uf::piper
       id: right_piper
-      port: can0
+      # 右臂 CAN 适配器 -> can_right
+      port: can_right
       control_space: cartesian
       configure_role_on_connect: true
       park_on_connect: false
