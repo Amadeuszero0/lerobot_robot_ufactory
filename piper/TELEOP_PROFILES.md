@@ -3,6 +3,21 @@
 The configuration directory is intentionally kept small. The profiles below
 are the only recommended entry points for the current hardware.
 
+## Exact untouched original snapshot
+
+The repository's first Piper/Pika implementation is preserved without any
+later Codex edits at both of these Git references:
+
+- Branch: `original-untouched-piper`
+- Tag: `original-untouched-piper-20260801`
+- Exact commit: `45f9d9f`
+
+This snapshot intentionally still contains the original placeholder device
+paths (`can_follower1`, `can_follower2`, and `/dev/REPLACE_*`) and the original
+camera placeholders. Keep it as the source-of-truth archive; make a separate
+runtime config when testing it on current hardware instead of changing the
+archived reference.
+
 ## Default: old working dual-arm behaviour
 
 `config/dual_pika_piper.yaml`
