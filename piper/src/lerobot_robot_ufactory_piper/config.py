@@ -59,8 +59,10 @@ class PiperFollowerConfig(RobotConfig):
     direct_max_step_mm: float | None = None
     direct_max_step_rad: float | None = None
     # Piper SDK EndPose feedback/control is located at the J6 origin. This
-    # local-frame offset makes Cartesian actions target the physical tool
-    # centre point instead. The official Piper gripper TCP is [0, 0, 145] mm.
+    # optional translation-only offset targets a local-frame TCP. Tools whose
+    # frame also rotates relative to J6 (including the PikaAnyArm PiperX tool)
+    # must instead use the full tracker_to_robot_eef rigid transform in the
+    # teleoperator; do not enable both compensations for the same tool.
     tcp_offset_mm: tuple[float, ...] = (0.0, 0.0, 0.0)
     startup_tcp_pose: tuple[float, ...] | None = None
     startup_move_timeout_s: float = 30.0

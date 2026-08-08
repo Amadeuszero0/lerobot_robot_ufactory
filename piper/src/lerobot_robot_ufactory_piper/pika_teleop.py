@@ -278,6 +278,33 @@ class PiperPikaTeleop(_PikaTeleop):
                     self._begin_tracker_senior = (p_now.copy(), r_now.copy())
                 p0, r0 = self._begin_tracker_senior
                 delta_rot = r_now @ r0.T
+                # The full tool-frame transform must be preserved, but the raw
+                # Vive rotation delta can still be scaled and filtered before
+                # it is conjugated into the Piper base.  Earlier senior-mode
+                # experiments skipped these configured safety controls, which
+                # made a small preflight impossible and could command the full
+                # wrist gesture in one cycle.
+                delta_vector = np.asarray(
+                    Transformations.rotation_matrix_to_rxryrz(delta_rot),
+                    dtype=float,
+                )
+                if self.config.rotation_dominant_axis:
+                    dominant_index = int(np.argmax(np.abs(delta_vector)))
+                    dominant_vector = np.zeros(3, dtype=float)
+                    dominant_vector[dominant_index] = delta_vector[dominant_index]
+                    delta_vector = dominant_vector
+                if self.config.rotation_filter_alpha < 1.0:
+                    if self._filtered_rotation_delta is None:
+                        self._filtered_rotation_delta = delta_vector.copy()
+                    else:
+                        alpha = self.config.rotation_filter_alpha
+                        self._filtered_rotation_delta = (
+                            alpha * delta_vector
+                            + (1.0 - alpha) * self._filtered_rotation_delta
+                        )
+                    delta_vector = self._filtered_rotation_delta
+                delta_vector *= self.config.rotation_scale
+                delta_rot = Transformations.rxryrz_to_rotation_matrix(*delta_vector)
                 q = self._senior_q
                 gripper_base = (
                     self.robot_base_matrix @ self._senior_eef_to_tracker
