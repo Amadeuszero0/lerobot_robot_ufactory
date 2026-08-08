@@ -79,7 +79,7 @@ teleop:
       scale_xyz: 0.05
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, 150, 250, 180, 0, 0]
-      tracker_device_id: T20
+      tracker_device_id: LHR-818D4A5D
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: true
@@ -102,7 +102,7 @@ teleop:
       scale_xyz: 0.05
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, -150, 250, 180, 0, 0]
-      tracker_device_id: T21
+      tracker_device_id: LHR-52C31F65
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: true

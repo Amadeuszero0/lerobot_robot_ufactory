@@ -2,10 +2,10 @@
 # 硬件接线：
 #   左手 Pika  -> /dev/pika_left （udev 按 USB 物理端口固定）
 #   右手 Pika  -> /dev/pika_right
-#   左臂 Piper -> can0，右臂 Piper -> can1（按插入顺序约定，开机用 ip link show 确认）
-# tracker 绑定：left=T20、right=T21 只是占位，首次请用
-#   python piper/tools/measure_pika_piper_mapping.py --port /dev/pika_left
-#   确认左右各是哪个 tracker，不对就交换。
+#   左臂 Piper -> can_left，右臂 Piper -> can_right（udev 按 USB 物理端口固定）
+# tracker 使用固定硬件序列号绑定；T20/T21 是进程启动时的临时名称，不能写入配置：
+#   left=LHR-818D4A5D，right=LHR-52C31F65
+# 如更换 Pika，请重新运行 python piper/tools/identify_dual_pika_trackers.py。
 # 注意：右手映射矩阵尚未单独标定，默认沿用左手实测矩阵；双臂方向若右手不对，
 # 需对右手单独跑测量工具并填入 raw_translation_matrix。
 robot:
@@ -98,7 +98,7 @@ teleop:
       scale_xyz: 0.5
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, 150, 250, 180, 0, 0]
-      tracker_device_id: T20
+      tracker_device_id: LHR-818D4A5D
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: true
@@ -128,7 +128,7 @@ teleop:
       scale_xyz: 0.5
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, -150, 250, 180, 0, 0]
-      tracker_device_id: T21
+      tracker_device_id: LHR-52C31F65
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: true
