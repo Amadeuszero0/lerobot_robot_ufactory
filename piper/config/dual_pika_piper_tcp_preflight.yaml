@@ -1,6 +1,7 @@
 # Guarded dual-arm TCP pivot preflight. Cartesian xyz now refers to the
 # official gripper centre, 145 mm along the local J6 Z axis. Translation is
-# strongly suppressed and grippers are disabled for the first hardware test.
+# strongly suppressed and grippers are disabled for the hardware test. This
+# profile uses a moderate wrist speed so the TCP pivot is easy to observe.
 robot:
   type: uf::dual_piper
   id: dual_piper_tcp_preflight
@@ -24,11 +25,11 @@ robot:
       cartesian_command_mode: direct
       tcp_offset_mm: [0.0, 0.0, 145.0]
       max_cartesian_step_mm: 1.0
-      max_rotation_step_rad: 0.008
+      max_rotation_step_rad: 0.020
       max_cartesian_following_error_mm: 40.0
       max_rotation_following_error_rad: 0.30
       direct_max_step_mm: 1.0
-      direct_max_step_rad: 0.008
+      direct_max_step_rad: 0.020
       translation_deadband_mm: 5.0
       rotation_deadband_rad: 0.008
       lock_orientation: false
@@ -36,7 +37,7 @@ robot:
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 10
+      move_speed_percent: 25
       send_gripper: false
       cameras: {}
     right:
@@ -55,11 +56,11 @@ robot:
       cartesian_command_mode: direct
       tcp_offset_mm: [0.0, 0.0, 145.0]
       max_cartesian_step_mm: 1.0
-      max_rotation_step_rad: 0.008
+      max_rotation_step_rad: 0.020
       max_cartesian_following_error_mm: 40.0
       max_rotation_following_error_rad: 0.30
       direct_max_step_mm: 1.0
-      direct_max_step_rad: 0.008
+      direct_max_step_rad: 0.020
       translation_deadband_mm: 5.0
       rotation_deadband_rad: 0.008
       lock_orientation: false
@@ -67,7 +68,7 @@ robot:
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 10
+      move_speed_percent: 25
       send_gripper: false
       cameras: {}
 
@@ -97,7 +98,7 @@ teleop:
         [-1.000000000, 0.125279522, 0.826245272],
       ]
       rotation_dominant_axis: false
-      rotation_scale: 0.20
+      rotation_scale: 0.40
       rotation_filter_alpha: 0.50
     right:
       type: uf::piper_pika_teleop
@@ -120,7 +121,7 @@ teleop:
         [-1.000000000, 0.125279522, 0.826245272],
       ]
       rotation_dominant_axis: false
-      rotation_scale: 0.20
+      rotation_scale: 0.40
       rotation_filter_alpha: 0.50
 
 fps: 50
