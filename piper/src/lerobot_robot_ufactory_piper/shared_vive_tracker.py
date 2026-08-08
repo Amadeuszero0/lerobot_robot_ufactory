@@ -3,8 +3,10 @@
 Two pysurvive contexts cannot coexist (the second one fails with
 LIBUSB_ERROR_BUSY), and every context sees BOTH trackers. This module keeps
 ONE context plus one reader thread that caches each device's latest pose by
-name, then patches the pika SDK so each Pika reads its own tracker
-(``tracker_device_id``, e.g. T20 / T21).
+name and persistent hardware serial, then patches the pika SDK so each Pika
+reads its own tracker.  The libsurvive names (for example T20 / T21) are
+assigned during discovery and may swap between process starts; dual-Pika
+profiles must therefore use the persistent LHR serial as ``tracker_device_id``.
 
 If pysurvive is unavailable or the shared context cannot start, the original
 SDK path is kept as a fallback (single-Pika setups keep working unchanged).
@@ -48,6 +50,7 @@ class SharedViveTracker:
         self.ctx = None
         self._lock = threading.Lock()
         self._poses: dict[str, _Pose] = {}
+        self._serial_by_name: dict[str, str] = {}
         self._thread: threading.Thread | None = None
         self._stop = False
 
@@ -86,6 +89,18 @@ class SharedViveTracker:
             if updated:
                 try:
                     name = updated.Name().decode("utf-8")
+                    serial = None
+                    serial_number = getattr(
+                        pysurvive, "simple_serial_number", None
+                    )
+                    ptr = getattr(updated, "ptr", None)
+                    if serial_number is not None and ptr is not None:
+                        value = serial_number(ptr)
+                        if isinstance(value, bytes):
+                            value = value.decode("utf-8", errors="replace")
+                        value = str(value).strip()
+                        if value:
+                            serial = value
                     pose, _ts = updated.Pose()
                     position = np.array(
                         [pose.Pos[0], pose.Pos[1], pose.Pos[2]], dtype=float
@@ -99,10 +114,12 @@ class SharedViveTracker:
                         ],
                         dtype=float,
                     )
+                    latest = _Pose(position, rotation, time.monotonic())
                     with self._lock:
-                        self._poses[name] = _Pose(
-                            position, rotation, time.monotonic()
-                        )
+                        self._poses[name] = latest
+                        if serial:
+                            self._poses[serial] = latest
+                            self._serial_by_name[name] = serial
                 except Exception:
                     pass
 
@@ -120,6 +137,24 @@ class SharedViveTracker:
     def devices(self) -> list[str]:
         with self._lock:
             return list(self._poses.keys())
+
+    def tracker_serials(self) -> list[str]:
+        """Return persistent serials for non-lighthouse tracked objects."""
+        with self._lock:
+            return sorted(
+                serial
+                for name, serial in self._serial_by_name.items()
+                if not name.startswith("LH")
+            )
+
+    def tracker_identities(self) -> dict[str, str]:
+        """Return the current transient-name to persistent-serial mapping."""
+        with self._lock:
+            return {
+                name: serial
+                for name, serial in self._serial_by_name.items()
+                if not name.startswith("LH")
+            }
 
     def shutdown(self) -> None:
         self._stop = True

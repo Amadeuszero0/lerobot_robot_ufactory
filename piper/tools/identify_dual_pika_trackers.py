@@ -15,7 +15,9 @@ from lerobot_robot_ufactory_piper.shared_vive_tracker import SharedViveTracker
 
 
 def _tracker_names(shared: SharedViveTracker) -> list[str]:
-    return sorted(name for name in shared.devices() if not name.startswith("LH"))
+    # T20/T21 are discovery-order aliases and can swap across process starts.
+    # Only persistent LHR serials are safe for left/right configuration.
+    return shared.tracker_serials()
 
 
 def _wait_for_trackers(
@@ -30,7 +32,7 @@ def _wait_for_trackers(
             return fresh
         time.sleep(0.1)
     raise RuntimeError(
-        f"Expected two fresh Pika trackers, found {names}. "
+        f"Expected two fresh Pika tracker serials, found {names}. "
         "Check both Pikas and lighthouse visibility."
     )
 
@@ -105,10 +107,11 @@ def main() -> None:
         raise RuntimeError("Could not start the shared pysurvive tracker context")
 
     print("READ ONLY: no CAN interface or Piper robot will be opened.")
-    print("Waiting for exactly two fresh non-lighthouse trackers...")
+    print("Waiting for exactly two fresh persistent Pika tracker serials...")
     try:
         names = _wait_for_trackers(shared)
         print("Detected:", names)
+        print("Current transient-name mapping:", shared.tracker_identities())
         left_motion = _measure_motion(shared, names, "left", args.duration_s)
         print("Return the left Pika to a comfortable position and keep it still.")
         time.sleep(2.0)
@@ -123,6 +126,7 @@ def main() -> None:
         print("Suggested YAML:")
         print(f"  left tracker_device_id: {left}")
         print(f"  right tracker_device_id: {right}")
+        print("Use these LHR serials, never T20/T21, in dual-arm configs.")
     finally:
         shared.shutdown()
 
