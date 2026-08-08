@@ -1,12 +1,11 @@
-"""Piper joint-streaming follower (official-style motion layer).
+"""Piper/PiPER-X joint-streaming follower.
 
 Receives the same Cartesian Pika teleop actions as ``PiperFollower``, but
 executes them by solving IK with the URDF kinematics (pure numpy) and
-streaming joint targets through the SDK's joint control mode
-(``MotionCtrl_2(0x01,0x01,speed,0xad)`` + ``JointCtrl``), with per-cycle
-Cartesian and joint step limits. This is the motion layer the official
-PikaAnyArm stack uses: it avoids the MOVE P re-planning that causes jitter
-and fixed-speed chasing.
+streaming joint targets through the SDK's normal joint-position mode
+(``MotionCtrl_2(0x01,0x01,speed,0x00)`` + ``JointCtrl``), with per-cycle
+Cartesian and joint step limits.  Unlike ``EndPoseCtrl``, this makes the
+J4/J5/J6 allocation explicit and testable.
 
 Kept as a separate robot type (``uf::piper_joint_stream``) so the MOVE P
 path (V13/V14, ``uf::piper``) is completely untouched.
@@ -17,10 +16,12 @@ from __future__ import annotations
 import logging
 import math
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any
+from typing import Any, Callable, TypeVar
+
+import numpy as np
 
 from lerobot.cameras import Camera, CameraConfig
 from lerobot.cameras.utils import make_cameras_from_configs
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 POSE_KEYS = ("pose.x", "pose.y", "pose.z", "pose.rx", "pose.ry", "pose.rz")
 _RAD_TO_MILLIDEG = 1000.0 * 180.0 / math.pi
+T = TypeVar("T")
 
 
 @RobotConfig.register_subclass("uf::piper_joint_stream")
@@ -52,9 +54,14 @@ class PiperJointStreamConfig(RobotConfig):
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
 
     configure_role_on_connect: bool = True
+    piper_init_on_connect: bool = False
+    enable_torque_on_connect: bool = True
     park_on_connect: bool = False
     park_on_disconnect: bool = False
-    disable_torque_on_disconnect: bool = True
+    disable_torque_on_disconnect: bool = False
+    # Calculate and report IK without sending ModeCtrl/JointCtrl/GripperCtrl.
+    dry_run: bool = False
+    dry_run_log_interval_s: float = 0.25
 
     # Cartesian target clamps (same safety semantics as PiperFollower).
     max_cartesian_step_mm: float = 8.0
@@ -72,6 +79,9 @@ class PiperJointStreamConfig(RobotConfig):
     ik_weight_ori: float = 1.0
     ik_residual_limit: float = 0.03
     move_speed_percent: int = 30
+    # Select the actual mechanism. PiPER-X must never use the ordinary Piper
+    # model because its J4/J5/J6 joint origins and fixed rotations differ.
+    kinematic_model: str = "piper"
     # Base frame transform (from verify_ik_fk.py --calibrate; identity by
     # default). T_sdk = X_base @ chain(q) @ X_ee.
     base_xyz_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -80,6 +90,10 @@ class PiperJointStreamConfig(RobotConfig):
     # piper/tools/verify_ik_fk.py.
     ee_xyz_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)
     ee_rpy_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # Physical TCP after the calibrated native J6 frame.  AgileX's official
+    # PiPER-X gripper centre is 4.5 + 138 = 142.5 mm along local link6 Z.
+    tool_xyz_mm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    tool_rpy_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     send_gripper: bool = True
     gripper_effort: int = 1000
@@ -99,10 +113,45 @@ class PiperJointStreamConfig(RobotConfig):
             raise ValueError("max_joint_step_deg must be positive")
         if not 0 < self.ik_damping:
             raise ValueError("ik_damping must be positive")
+        if self.kinematic_model not in ("piper", "piper_x"):
+            raise ValueError("kinematic_model must be 'piper' or 'piper_x'")
+        if self.dry_run_log_interval_s <= 0:
+            raise ValueError("dry_run_log_interval_s must be positive")
+        for name in (
+            "base_xyz_mm",
+            "base_rpy_deg",
+            "ee_xyz_mm",
+            "ee_rpy_deg",
+            "tool_xyz_mm",
+            "tool_rpy_deg",
+        ):
+            values = getattr(self, name)
+            if len(values) != 3 or not all(math.isfinite(float(v)) for v in values):
+                raise ValueError(f"{name} must contain three finite values")
         for name in ("workspace_x", "workspace_y", "workspace_z"):
             bounds = getattr(self, name)
             if bounds is not None and bounds[0] >= bounds[1]:
                 raise ValueError(f"{name} must be ordered as (min, max)")
+
+
+@RobotConfig.register_subclass("uf::dual_piper_joint_stream")
+@dataclass(kw_only=True)
+class DualPiperJointStreamConfig(RobotConfig):
+    """Exactly two independently modelled joint-stream followers."""
+
+    robots: dict[str, RobotConfig] = field(default_factory=dict)
+    parallel_connect: bool = True
+    parallel_observation: bool = True
+    parallel_action: bool = False
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.id = "dual_piper_joint_stream" if self.id is None else self.id
+        if len(self.robots) != 2:
+            raise ValueError("uf::dual_piper_joint_stream requires exactly two arms")
+        ports = [getattr(robot, "port", None) for robot in self.robots.values()]
+        if any(port is None for port in ports) or len(set(ports)) != 2:
+            raise ValueError("dual joint-stream followers require distinct CAN ports")
 
 
 class PiperJointStreamFollower(Robot):
@@ -127,6 +176,7 @@ class PiperJointStreamFollower(Robot):
         self._last_gripper_cmd: float | None = None
         self._last_gripper_time_s: float = 0.0
         self._last_ik_warning_s: float = 0.0
+        self._last_dry_run_log_s: float = 0.0
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
                 max_workers=len(self.cameras),
@@ -167,20 +217,24 @@ class PiperJointStreamFollower(Robot):
     def _kinematics(self) -> PiperKinematics:
         if self._kin is None:
             self._kin = PiperKinematics(
+                model=self.config.kinematic_model,
                 base_xyzrpy_m=tuple(v / 1000.0 for v in self.config.base_xyz_mm),
                 base_rpy_rad=tuple(math.radians(v) for v in self.config.base_rpy_deg),
                 ee_xyzrpy_m=tuple(v / 1000.0 for v in self.config.ee_xyz_mm),
                 ee_rpy_rad=tuple(math.radians(v) for v in self.config.ee_rpy_deg),
+                tool_xyzrpy_m=tuple(v / 1000.0 for v in self.config.tool_xyz_mm),
+                tool_rpy_rad=tuple(math.radians(v) for v in self.config.tool_rpy_deg),
             )
         return self._kin
 
     def connect(self, calibrate: bool = True) -> None:
-        self.bus.connect()
+        self.bus.connect(piper_init=self.config.piper_init_on_connect)
         try:
-            if self.config.configure_role_on_connect:
+            if self.config.configure_role_on_connect and not self.config.dry_run:
                 self.bus.set_follower()
                 time.sleep(0.1)
-            self.bus.enable_torque()
+            if self.config.enable_torque_on_connect and not self.config.dry_run:
+                self.bus.enable_torque()
             for camera in self.cameras.values():
                 camera.connect()
             if self.cameras and self._camera_executor is None:
@@ -193,12 +247,16 @@ class PiperJointStreamFollower(Robot):
             for camera in self.cameras.values():
                 if camera.is_connected:
                     camera.disconnect()
-            self.bus.disconnect(disable_torque=True, park=False)
+            self.bus.disconnect(
+                disable_torque=self.config.disable_torque_on_disconnect,
+                park=False,
+            )
             raise
         logger.info(
-            "Connected joint-stream follower %s on %s",
+            "Connected joint-stream follower %s on %s%s",
             self.id,
             self.config.port,
+            " (read-only dry run)" if self.config.dry_run else "",
         )
 
     def calibrate(self) -> None:
@@ -214,7 +272,11 @@ class PiperJointStreamFollower(Robot):
     def get_observation(self) -> dict[str, Any]:
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected")
-        x, y, z, roll, pitch, yaw = self.bus.get_end_pose()
+        # Expose the configured physical TCP, not the native SDK/J6 origin.
+        # That makes the Pika origin and the IK target use the same centre.
+        x, y, z, roll, pitch, yaw = self._kinematics().forward_xyzrpy(
+            self._current_joints_rad()
+        )
         rx, ry, rz = rpy_degrees_to_axis_angle(roll, pitch, yaw)
         local = dict(zip(POSE_KEYS, (x, y, z, rx, ry, rz), strict=True))
         if self.config.send_gripper:
@@ -263,7 +325,8 @@ class PiperJointStreamFollower(Robot):
     def _send_cartesian_joint_stream(
         self, local: dict[str, float]
     ) -> dict[str, float]:
-        x, y, z, roll, pitch, yaw = self.bus.get_end_pose()
+        q_current = self._current_joints_rad()
+        x, y, z, roll, pitch, yaw = self._kinematics().forward_xyzrpy(q_current)
         current_rx, current_ry, current_rz = rpy_degrees_to_axis_angle(
             roll, pitch, yaw
         )
@@ -289,6 +352,8 @@ class PiperJointStreamFollower(Robot):
         if self.config.send_gripper:
             sent["gripper.pos"] = local["gripper.pos"]
         if in_deadband:
+            if self.config.send_gripper and not self.config.dry_run:
+                self._send_gripper(local["gripper.pos"], sent)
             return sent
 
         limited_xyz = vector_step_towards(
@@ -301,7 +366,6 @@ class PiperJointStreamFollower(Robot):
         )
         roll_deg, pitch_deg, yaw_deg = axis_angle_to_rpy_degrees(*limited_rot)
 
-        q_current = self._current_joints_rad()
         kin = self._kinematics()
         q_target, residual = kin.ik(
             limited_xyz,
@@ -331,15 +395,31 @@ class PiperJointStreamFollower(Robot):
         max_joint_step = math.radians(self.config.max_joint_step_deg)
         delta = np.clip(q_target - q_current, -max_joint_step, max_joint_step)
         q_send = q_current + delta
-        millideg = tuple(int(round(v * _RAD_TO_MILLIDEG)) for v in q_send)
-        self._send_joints(millideg)
+        if self.config.dry_run:
+            now_s = time.monotonic()
+            if now_s - self._last_dry_run_log_s >= self.config.dry_run_log_interval_s:
+                delta_deg = np.degrees(q_target - q_current)
+                logger.warning(
+                    "IK PREVIEW %s residual=%.5f deg_delta=%s wrist(J4/J5/J6)=%s",
+                    self.id,
+                    residual,
+                    np.round(delta_deg, 3).tolist(),
+                    np.round(delta_deg[3:6], 3).tolist(),
+                )
+                self._last_dry_run_log_s = now_s
+        else:
+            millideg = tuple(int(round(v * _RAD_TO_MILLIDEG)) for v in q_send)
+            self._send_joints(millideg)
 
-        if self.config.send_gripper:
+        if self.config.send_gripper and not self.config.dry_run:
             self._send_gripper(local["gripper.pos"], sent)
         return sent
 
     def _send_joints(self, millideg: tuple[int, ...]) -> None:
-        cmd = (0x01, 0x01, self.config.move_speed_percent, 0xAD)
+        # Normal position/velocity mode. MIT mode (0xAD) is deliberately not
+        # used: it is an advanced torque-oriented mode and is unnecessary for
+        # absolute JointCtrl targets.
+        cmd = (0x01, 0x01, self.config.move_speed_percent, 0x00)
         if self._last_motion_ctrl != cmd:
             self.bus.piper.MotionCtrl_2(*cmd)
             self._last_motion_ctrl = cmd
@@ -390,3 +470,112 @@ class PiperJointStreamFollower(Robot):
             park=self.config.park_on_disconnect,
         )
         self._last_joint_cmd_rad = None
+
+
+class DualPiperJointStreamFollower(Robot):
+    """Dual-arm wrapper that keeps each PiPER-X IK seed and CAN bus separate."""
+
+    config_class = DualPiperJointStreamConfig
+    name = "dual_piper_joint_stream_follower"
+
+    def __init__(self, config: DualPiperJointStreamConfig) -> None:
+        super().__init__(config)
+        self.config = config
+        self.robots: dict[str, PiperJointStreamFollower] = {}
+        for side, robot_config in config.robots.items():
+            if not isinstance(robot_config, PiperJointStreamConfig):
+                raise TypeError(
+                    f"{side} must use type uf::piper_joint_stream, "
+                    f"got {robot_config.type}"
+                )
+            self.robots[side] = PiperJointStreamFollower(robot_config, prefix=side)
+        self.cameras = {
+            f"{side}.{name}": camera
+            for side, robot in self.robots.items()
+            for name, camera in robot.cameras.items()
+        }
+        self._executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="dual-piper-joint-stream"
+        )
+
+    @property
+    def observation_features(self) -> dict:
+        return self._merge(lambda robot: robot.observation_features)
+
+    @property
+    def action_features(self) -> dict:
+        return self._merge(lambda robot: robot.action_features)
+
+    @property
+    def is_connected(self) -> bool:
+        return all(robot.is_connected for robot in self.robots.values())
+
+    @property
+    def is_calibrated(self) -> bool:
+        return all(robot.is_calibrated for robot in self.robots.values())
+
+    def _merge(self, getter: Callable[[PiperJointStreamFollower], dict]) -> dict:
+        merged: dict = {}
+        for robot in self.robots.values():
+            merged.update(getter(robot))
+        return merged
+
+    def _parallel(self, fn: Callable[[PiperJointStreamFollower], T]) -> list[T]:
+        futures: list[Future[T]] = [
+            self._executor.submit(fn, robot) for robot in self.robots.values()
+        ]
+        return [future.result() for future in futures]
+
+    def connect(self, calibrate: bool = True) -> None:
+        try:
+            if self.config.parallel_connect:
+                self._parallel(lambda robot: robot.connect(calibrate=calibrate))
+            else:
+                for robot in self.robots.values():
+                    robot.connect(calibrate=calibrate)
+        except BaseException:
+            for robot in self.robots.values():
+                if robot.bus.is_connected:
+                    try:
+                        robot.disconnect()
+                    except Exception:
+                        logger.exception("Failed to clean up %s", robot.id)
+            raise
+
+    def calibrate(self) -> None:
+        for robot in self.robots.values():
+            robot.calibrate()
+
+    def configure(self) -> None:
+        return None
+
+    def get_observation(self) -> dict[str, Any]:
+        observations = (
+            self._parallel(lambda robot: robot.get_observation())
+            if self.config.parallel_observation
+            else [robot.get_observation() for robot in self.robots.values()]
+        )
+        merged: dict[str, Any] = {}
+        for observation in observations:
+            merged.update(observation)
+        return merged
+
+    def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        def send(robot: PiperJointStreamFollower) -> dict[str, Any]:
+            return robot.send_action(action)
+
+        sent_actions = (
+            self._parallel(send)
+            if self.config.parallel_action
+            else [send(robot) for robot in self.robots.values()]
+        )
+        merged: dict[str, Any] = {}
+        for sent in sent_actions:
+            merged.update(sent)
+        return merged
+
+    def disconnect(self) -> None:
+        try:
+            self._parallel(lambda robot: robot.disconnect())
+        finally:
+            self._executor.shutdown(wait=True)

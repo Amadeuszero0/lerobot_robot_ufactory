@@ -1,19 +1,19 @@
-"""URDF-based FK/IK for the Piper arm: pure numpy, zero third-party deps.
+"""URDF-based FK/IK for Piper and PiPER-X: pure numpy.
 
-The official PikaAnyArm stack uses pinocchio; here the same URDF
-(piper_description.urdf) is parsed with the stdlib XML parser and the
-kinematic chain is evaluated with numpy. The IK is a Levenberg-Marquardt
+The URDF is parsed with the stdlib XML parser and the kinematic chain is
+evaluated with numpy. The IK is a Levenberg-Marquardt
 damped least-squares solver with a numerical Jacobian, seeded with the
 current joint values so successive solutions stay continuous.
 
 The SDK end-pose frame generally differs from the raw URDF frame by a fixed
 base transform and a fixed end-effector transform:
 
-    T_sdk = X_base @ chain(q) @ X_ee
+    T_control = X_base @ chain(q) @ X_ee @ X_tool
 
-Both transforms are configurable (``base_xyzrpy_m``/``base_rpy_rad`` and
-``ee_xyzrpy_m``/``ee_rpy_rad``) and calibrated by
-piper/tools/verify_ik_fk.py --calibrate.
+``X_ee`` is an optional model-to-SDK calibration and ``X_tool`` moves the
+controlled point from the native J6 frame to a physical TCP. AgileX's
+official PiPER-X URDF matches SDK J6 feedback directly; the official gripper
+centre is 142.5 mm along link6 local Z.
 """
 
 from __future__ import annotations
@@ -25,7 +25,11 @@ from typing import Iterable
 
 import numpy as np
 
-_URDF = Path(__file__).resolve().parents[2] / "urdf" / "piper_description.urdf"
+_URDF_DIR = Path(__file__).resolve().parents[2] / "urdf"
+_URDFS = {
+    "piper": _URDF_DIR / "piper_description.urdf",
+    "piper_x": _URDF_DIR / "piper_x_kinematic.urdf",
+}
 _ACTUATED = {"revolute", "continuous"}
 
 
@@ -56,7 +60,7 @@ def xyzrpy_to_matrix(
 def matrix_to_xyzrpy(T: np.ndarray) -> tuple[float, float, float, float, float, float]:
     R = T[:3, :3]
     roll = math.atan2(R[2, 1], R[2, 2])
-    pitch = math.asin(-R[2, 0])
+    pitch = math.asin(min(1.0, max(-1.0, -R[2, 0])))
     yaw = math.atan2(R[1, 0], R[0, 0])
     return (T[0, 3], T[1, 3], T[2, 3], roll, pitch, yaw)
 
@@ -163,12 +167,17 @@ class PiperKinematics:
     def __init__(
         self,
         urdf_path: str | Path | None = None,
+        model: str = "piper",
         base_xyzrpy_m: Iterable[float] = (0.0, 0.0, 0.0),
         base_rpy_rad: Iterable[float] = (0.0, 0.0, 0.0),
         ee_xyzrpy_m: Iterable[float] = (0.0, 0.0, 0.0),
         ee_rpy_rad: Iterable[float] = (0.0, 0.0, 0.0),
+        tool_xyzrpy_m: Iterable[float] = (0.0, 0.0, 0.0),
+        tool_rpy_rad: Iterable[float] = (0.0, 0.0, 0.0),
     ) -> None:
-        path = Path(urdf_path) if urdf_path is not None else _URDF
+        if model not in _URDFS:
+            raise ValueError(f"Unsupported Piper kinematic model: {model}")
+        path = Path(urdf_path) if urdf_path is not None else _URDFS[model]
         if not path.exists():
             raise FileNotFoundError(f"Piper URDF not found: {path}")
         self.chain = _build_chain(_parse_urdf(path))
@@ -193,6 +202,10 @@ class PiperKinematics:
             np.asarray(list(ee_xyzrpy_m), dtype=float),
             np.asarray(list(ee_rpy_rad), dtype=float),
         )
+        self.tool_tf = xyzrpy_to_matrix(
+            np.asarray(list(tool_xyzrpy_m), dtype=float),
+            np.asarray(list(tool_rpy_rad), dtype=float),
+        )
         self._origins = [
             xyzrpy_to_matrix(j["xyz"], j["rpy"]) for j in self.chain
         ]
@@ -213,11 +226,11 @@ class PiperKinematics:
         return T
 
     def _model_matrix(self, q_rad: np.ndarray) -> np.ndarray:
-        """Chain @ ee: the frame the IK iterates on."""
-        return self.chain_matrix(q_rad) @ self.ee_tf
+        """Chain @ calibration @ tool: the frame controlled by IK."""
+        return self.chain_matrix(q_rad) @ self.ee_tf @ self.tool_tf
 
     def forward(self, q_rad: np.ndarray) -> np.ndarray:
-        """FK in the SDK frame: base @ chain @ ee (meters)."""
+        """FK of the configured control point (meters)."""
         return self.base_tf @ self._model_matrix(q_rad)
 
     def forward_xyzrpy(
@@ -293,4 +306,9 @@ class PiperKinematics:
                 lam = max(float(damping), lam * 0.7)
             else:
                 lam = min(1.0, lam * 3.0)
+        residual = float(
+            np.linalg.norm(
+                _log_se3(np.linalg.inv(self._model_matrix(q)) @ target_model)
+            )
+        )
         return q, residual

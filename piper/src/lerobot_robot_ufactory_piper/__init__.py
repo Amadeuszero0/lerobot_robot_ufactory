@@ -19,7 +19,12 @@ from .config import (
 from .piper_follower import DualPiperFollower, PiperFollower
 from .piper_leader import DualPiperLeader, PiperLeader
 from .pika_teleop import DualPikaTeleop, PiperPikaTeleop
-from .piper_joint_stream import PiperJointStreamConfig, PiperJointStreamFollower
+from .piper_joint_stream import (
+    DualPiperJointStreamConfig,
+    DualPiperJointStreamFollower,
+    PiperJointStreamConfig,
+    PiperJointStreamFollower,
+)
 from . import cameras  # noqa: F401  (applies the lenient OpenCV patch)
 from . import shared_vive_tracker  # noqa: F401  (shared pysurvive for dual Pika)
 
@@ -38,4 +43,6 @@ __all__ = [
     "PiperPikaTeleopConfig",
     "PiperJointStreamFollower",
     "PiperJointStreamConfig",
+    "DualPiperJointStreamFollower",
+    "DualPiperJointStreamConfig",
 ]
