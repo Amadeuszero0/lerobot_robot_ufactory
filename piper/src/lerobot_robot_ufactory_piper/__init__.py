@@ -20,8 +20,10 @@ from .piper_follower import DualPiperFollower, PiperFollower
 from .piper_leader import DualPiperLeader, PiperLeader
 from .pika_teleop import DualPikaTeleop, PiperPikaTeleop
 from .piper_joint_stream import (
+    DualPiperJointStream,
     DualPiperJointStreamConfig,
     DualPiperJointStreamFollower,
+    PiperJointStream,
     PiperJointStreamConfig,
     PiperJointStreamFollower,
 )
@@ -41,8 +43,10 @@ __all__ = [
     "PiperLeaderConfig",
     "PiperPikaTeleop",
     "PiperPikaTeleopConfig",
+    "PiperJointStream",
     "PiperJointStreamFollower",
     "PiperJointStreamConfig",
+    "DualPiperJointStream",
     "DualPiperJointStreamFollower",
     "DualPiperJointStreamConfig",
 ]

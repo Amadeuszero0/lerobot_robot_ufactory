@@ -579,3 +579,11 @@ class DualPiperJointStreamFollower(Robot):
             self._parallel(lambda robot: robot.disconnect())
         finally:
             self._executor.shutdown(wait=True)
+
+
+# LeRobot discovers a device class by removing ``Config`` from the config
+# class name.  Keep the descriptive ``*Follower`` names as backwards-
+# compatible aliases, while exporting the exact names expected by its device
+# factory (PiperJointStreamConfig -> PiperJointStream, etc.).
+PiperJointStream = PiperJointStreamFollower
+DualPiperJointStream = DualPiperJointStreamFollower
