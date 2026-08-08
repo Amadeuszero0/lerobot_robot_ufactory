@@ -40,9 +40,12 @@ robot:
       send_gripper: true
       gripper_effort: 1000
       gripper_ctrl_code: 3
-      gripper_command_deadband: 0.005
+      # The original working dual-arm implementation streamed GripperCtrl on
+      # every due cycle. Piper gripper motion is unreliable with one-shot
+      # targets, so keep this preflight in the same streaming mode.
+      gripper_command_deadband: 0.0
       gripper_min_command_interval_s: 0.03
-      gripper_keepalive_s: 0.20
+      gripper_keepalive_s: 0.03
       cameras: {}
     right:
       type: uf::piper
@@ -73,9 +76,9 @@ robot:
       send_gripper: true
       gripper_effort: 1000
       gripper_ctrl_code: 3
-      gripper_command_deadband: 0.005
+      gripper_command_deadband: 0.0
       gripper_min_command_interval_s: 0.03
-      gripper_keepalive_s: 0.20
+      gripper_keepalive_s: 0.03
       cameras: {}
 
 teleop:
