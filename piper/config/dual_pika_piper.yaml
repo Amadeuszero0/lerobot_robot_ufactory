@@ -35,19 +35,19 @@ robot:
       feedback_startup_timeout_s: 5.0
       cartesian_command_mode: direct
       send_cartesian_pose: true
-      max_cartesian_step_mm: 6.0
-      max_rotation_step_rad: 0.025
+      max_cartesian_step_mm: 8.0
+      max_rotation_step_rad: 0.040
       max_cartesian_following_error_mm: 600.0
       max_rotation_following_error_rad: 1.5
-      direct_max_step_mm: 6.0
-      direct_max_step_rad: 0.025
+      direct_max_step_mm: 8.0
+      direct_max_step_rad: 0.040
       translation_deadband_mm: 3.0
       rotation_deadband_rad: 0.008
       workspace_x: [50.0, 600.0]
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 40
+      move_speed_percent: 50
       # 双臂首次测试：手动把左右臂摆到安全镜像位姿，不自动移动
       # startup_tcp_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
       send_gripper: true
@@ -74,19 +74,19 @@ robot:
       feedback_startup_timeout_s: 5.0
       cartesian_command_mode: direct
       send_cartesian_pose: true
-      max_cartesian_step_mm: 6.0
-      max_rotation_step_rad: 0.025
+      max_cartesian_step_mm: 8.0
+      max_rotation_step_rad: 0.040
       max_cartesian_following_error_mm: 600.0
       max_rotation_following_error_rad: 1.5
-      direct_max_step_mm: 6.0
-      direct_max_step_rad: 0.025
+      direct_max_step_mm: 8.0
+      direct_max_step_rad: 0.040
       translation_deadband_mm: 3.0
       rotation_deadband_rad: 0.008
       workspace_x: [50.0, 600.0]
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 40
+      move_speed_percent: 50
       send_gripper: true
       gripper_effort: 1000
       gripper_ctrl_code: 3
@@ -124,7 +124,7 @@ teleop:
         [-1.000000000, 0.125279522, 0.826245272],
       ]
       rotation_dominant_axis: false
-      rotation_scale: 0.35
+      rotation_scale: 0.50
       rotation_filter_alpha: 0.50
       gripper_use_direct_distance: true
       gripper_distance_min_mm: 0.4
@@ -156,7 +156,7 @@ teleop:
         [-1.000000000, 0.125279522, 0.826245272],
       ]
       rotation_dominant_axis: false
-      rotation_scale: 0.35
+      rotation_scale: 0.50
       rotation_filter_alpha: 0.50
       gripper_use_direct_distance: true
       gripper_distance_min_mm: 0.4
