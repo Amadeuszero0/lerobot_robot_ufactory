@@ -1,4 +1,10 @@
-# PiPER-X J5/J6 and tool-centre control
+# PiPER-X J5/J6 and tool-centre control — rejected hardware experiment
+
+> **Do not use this path for hardware teleoperation.** Read-only FK/IK checks
+> passed, but the first actuated dual-arm test produced severe shaking and did
+> not follow Pika motion reliably. The runnable preview/stage-1 configs were
+> removed. This document and implementation remain only as engineering
+> history; the supported profiles are listed in `TELEOP_PROFILES.md`.
 
 ## Root cause
 
@@ -31,7 +37,7 @@ PiPER-X software IK or deterministic wrist allocation.
 - Existing `uf::piper`, `dual_pika_piper.yaml`, and all single-arm profiles
   remain unchanged.
 
-## Mandatory read-only verification
+## Archived read-only verification
 
 After pulling the commit on Linux and reinstalling the editable packages:
 
@@ -49,34 +55,20 @@ python piper/tools/verify_piper_x_model.py
 Both CAN ports must print `Result: PASS`.  This tool never enables torque and
 never sends a motion or gripper command.
 
-Then run the Pika-to-IK preview:
-
-```bash
-uf-piper-teleop \
-  --config_path piper/config/dual_pika_piper_x_ik_preview.yaml
-```
-
-Press Enter, then test one Pika at a time while both Piper arms remain
-stationary.  The profile is read-only.  It prints lines such as:
-
-```text
-IK PREVIEW left_piper_x_preview ... wrist(J4/J5/J6)=[...]
-```
-
-For each hand, test front up/down, front left/right, and roll.  Send the full
-preview output for review.  Do not run the actuated profile if:
+The removed preview printed lines such as `IK PREVIEW ...`, but passing the
+mathematical preview did not predict stable physical behaviour. Do not create
+another actuated profile from it without reviewing the control architecture.
+The original rejection gates were:
 
 - either model check reports FAIL;
 - a wrist gesture predicts only J1-J3 while J4-J6 remain near zero;
 - any predicted joint delta jumps discontinuously or heads into a joint limit;
 - the preview reports repeated large IK residual warnings.
 
-## Guarded actuated profile
+## Actuated result
 
-`piper/config/dual_pika_piper_x_joint_stream_stage1.yaml` is intentionally
-slow and is only for the next stage after the read-only output is reviewed.
-It keeps torque enabled on disconnect and uses 0.20 degree maximum joint
-steps.  It must not be used as the first test of this change.
+The former guarded profile was physically rejected and has been removed from
+the active configuration directory.
 
 ## Official model sources
 

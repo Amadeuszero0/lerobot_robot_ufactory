@@ -1,19 +1,33 @@
-# Tuned reconstruction of the dual-arm motion profile at commit 1436e30.
-# It restores the original adaptive wrist/tool-axis behaviour and high update
-# rate, while retaining persistent hardware IDs, verified gripper handling,
-# and smaller translation/step limits than the original aggressive profile.
+# PRESERVED VERIFIED-AXES PROFILE (commit 153d283 behaviour).
+# The user confirmed both wrist gesture directions were correct at these
+# guarded speeds. This is retained as the calmer alternative to the old
+# high-response default profile.
+# 硬件接线：
+#   左手 Pika  -> /dev/pika_left （udev 按 USB 物理端口固定）
+#   右手 Pika  -> /dev/pika_right
+#   左臂 Piper -> can_left，右臂 Piper -> can_right（udev 按 USB 物理端口固定）
+# tracker 使用固定硬件序列号绑定；T20/T21 是进程启动时的临时名称，不能写入配置：
+#   left=LHR-818D4A5D，right=LHR-52C31F65
+# 如更换 Pika，请重新运行 python piper/tools/identify_dual_pika_trackers.py。
+# 注意：右手映射矩阵尚未单独标定，默认沿用左手实测矩阵；双臂方向若右手不对，
+# 需对右手单独跑测量工具并填入 raw_translation_matrix。
 robot:
   type: uf::dual_piper
-  id: dual_piper_legacy_tuned
+  id: dual_piper
   parallel_connect: true
   parallel_observation: true
+  # Serialize SDK writes across the two CAN interfaces. Both arms still
+  # receive one command per 50 Hz control cycle.
   parallel_action: false
   robots:
     left:
       type: uf::piper
       id: left_piper
+      # udev 固定名（按 USB 物理口）：左臂 CAN 适配器 -> can_left
       port: can_left
       control_space: cartesian
+      # MasterSlaveConfig(0xFC) prevents the official gripper from following
+      # direct GripperCtrl on this hardware. Use explicit CAN control instead.
       configure_role_on_connect: false
       piper_init_on_connect: false
       enable_torque_on_connect: true
@@ -24,29 +38,33 @@ robot:
       feedback_startup_timeout_s: 5.0
       cartesian_command_mode: direct
       send_cartesian_pose: true
-      max_cartesian_step_mm: 10.0
-      max_rotation_step_rad: 0.080
-      max_cartesian_following_error_mm: 300.0
-      max_rotation_following_error_rad: 2.0
-      direct_max_step_mm: 15.0
-      direct_max_step_rad: 0.18
-      translation_deadband_mm: 5.0
-      rotation_deadband_rad: 0.020
+      max_cartesian_step_mm: 6.0
+      max_rotation_step_rad: 0.025
+      max_cartesian_following_error_mm: 600.0
+      max_rotation_following_error_rad: 1.5
+      direct_max_step_mm: 6.0
+      direct_max_step_rad: 0.025
+      translation_deadband_mm: 3.0
+      rotation_deadband_rad: 0.008
       workspace_x: [50.0, 600.0]
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 55
+      move_speed_percent: 40
+      # 双臂首次测试：手动把左右臂摆到安全镜像位姿，不自动移动
+      # startup_tcp_pose: [214.476, 3.501, 263.671, -146.447, -7.5, -91.716]
       send_gripper: true
       gripper_effort: 1000
       gripper_ctrl_code: 3
       gripper_command_deadband: 0.0
       gripper_min_command_interval_s: 0.03
       gripper_keepalive_s: 0.03
+      gripper_debug: true
       cameras: {}
     right:
       type: uf::piper
       id: right_piper
+      # 右臂 CAN 适配器 -> can_right
       port: can_right
       control_space: cartesian
       configure_role_on_connect: false
@@ -59,55 +77,58 @@ robot:
       feedback_startup_timeout_s: 5.0
       cartesian_command_mode: direct
       send_cartesian_pose: true
-      max_cartesian_step_mm: 10.0
-      max_rotation_step_rad: 0.080
-      max_cartesian_following_error_mm: 300.0
-      max_rotation_following_error_rad: 2.0
-      direct_max_step_mm: 15.0
-      direct_max_step_rad: 0.18
-      translation_deadband_mm: 5.0
-      rotation_deadband_rad: 0.020
+      max_cartesian_step_mm: 6.0
+      max_rotation_step_rad: 0.025
+      max_cartesian_following_error_mm: 600.0
+      max_rotation_following_error_rad: 1.5
+      direct_max_step_mm: 6.0
+      direct_max_step_rad: 0.025
+      translation_deadband_mm: 3.0
+      rotation_deadband_rad: 0.008
       workspace_x: [50.0, 600.0]
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
       move_mode: move_p
-      move_speed_percent: 55
+      move_speed_percent: 40
       send_gripper: true
       gripper_effort: 1000
       gripper_ctrl_code: 3
       gripper_command_deadband: 0.0
       gripper_min_command_interval_s: 0.03
       gripper_keepalive_s: 0.03
+      gripper_debug: true
       cameras: {}
 
 teleop:
   type: uf::dual_pika_teleop
-  id: dual_pika_legacy_tuned
+  id: dual_pika
   parallel_read: true
   teleops:
     left:
       type: uf::piper_pika_teleop
       id: left_pika
       port: /dev/pika_left
-      frequency: 100
+      frequency: 50
       use_gripper: true
-      scale_xyz: 0.35
+      scale_xyz: 0.5
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, 150, 250, 180, 0, 0]
       tracker_device_id: LHR-818D4A5D
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
-      apply_piper_tool_axis_correction: true
+      apply_piper_tool_axis_correction: false
       rotation_style: calibrated
-      pose_adaptive_rotation: true
+      # Keep the verified local/body-frame matrix. Rebuilding it from the
+      # current EEF pose permutes wrist axes differently on the two arms.
+      pose_adaptive_rotation: false
       rotation_mapping_matrix: [
         [0.000000000, 0.991000235, -0.130526192],
         [0.000000000, 0.047154810, 0.547979619],
         [-1.000000000, 0.125279522, 0.826245272],
       ]
       rotation_dominant_axis: false
-      rotation_scale: 0.60
-      rotation_filter_alpha: 0.40
+      rotation_scale: 0.35
+      rotation_filter_alpha: 0.50
       gripper_use_direct_distance: true
       gripper_distance_min_mm: 0.4
       gripper_distance_max_mm: 98.1
@@ -119,25 +140,27 @@ teleop:
       type: uf::piper_pika_teleop
       id: right_pika
       port: /dev/pika_right
-      frequency: 100
+      frequency: 50
       use_gripper: true
-      scale_xyz: 0.35
+      scale_xyz: 0.5
       tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, -150, 250, 180, 0, 0]
       tracker_device_id: LHR-52C31F65
       use_raw_translation_mapping: true
       use_calibrated_rotation_mapping: true
-      apply_piper_tool_axis_correction: true
+      apply_piper_tool_axis_correction: false
       rotation_style: calibrated
-      pose_adaptive_rotation: true
+      # Keep the verified local/body-frame matrix. Rebuilding it from the
+      # current EEF pose permutes wrist axes differently on the two arms.
+      pose_adaptive_rotation: false
       rotation_mapping_matrix: [
         [0.000000000, 0.991000235, -0.130526192],
         [0.000000000, 0.047154810, 0.547979619],
         [-1.000000000, 0.125279522, 0.826245272],
       ]
       rotation_dominant_axis: false
-      rotation_scale: 0.60
-      rotation_filter_alpha: 0.40
+      rotation_scale: 0.35
+      rotation_filter_alpha: 0.50
       gripper_use_direct_distance: true
       gripper_distance_min_mm: 0.4
       gripper_distance_max_mm: 98.1
@@ -146,12 +169,12 @@ teleop:
       gripper_deadband: 0.005
       gripper_max_step: 0.15
 
-fps: 100
+fps: 50
 
 dataset:
-  root: /home/star/lerobot_data/dual_pika_piper_legacy_tuned
-  repo_id: local/dual_pika_piper_legacy_tuned
-  single_task: Tuned legacy-style dual Pika to dual Piper teleoperation
+  root: /home/star/lerobot_data/dual_pika_piper
+  repo_id: local/dual_pika_piper
+  single_task: Bimanual Pika to Piper teleoperation
   fps: 50
   episode_time_s: 30
   reset_time_s: 20
