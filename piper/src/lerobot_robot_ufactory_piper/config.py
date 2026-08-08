@@ -221,11 +221,16 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     gripper_distance_max_mm: float = 100.0
     use_calibrated_rotation_mapping: bool = False
     apply_piper_tool_axis_correction: bool = False
-    # "calibrated" = fixed-matrix body-frame mapping; "world_delta" = port of
-    # the senior Lerobot-Real robot_base rotation only; "senior" = the full
-    # senior robot_base control target (world-delta rotation + gripper-center
-    # tool offset, translation and rotation coupled through tracker_to_robot_eef).
+    # "calibrated" = fixed-matrix body-frame mapping; "calibrated_tool" keeps
+    # that verified gesture mapping and additionally rotates about a physical
+    # tool centre; "world_delta" = Lerobot-Real robot_base rotation only;
+    # "senior" = the full Lerobot-Real robot_base control target.
     rotation_style: str = "calibrated"
+    # Full rigid transform C (tool centre -> native Piper J6), expressed as
+    # xyz(mm)+RPY(deg).  This is deliberately separate from
+    # tracker_to_robot_eef so an already calibrated Pika gesture mapping does
+    # not change axes when tool-centre compensation is enabled.
+    piper_tool_center_to_j6: tuple[float, ...] | None = None
     # Rebuild the calibrated rotation mapping at teleop enable from the actual
     # end-effector orientation, so pitch/yaw/roll keep the correct axes at any
     # arm pose (not just the pose used when the matrix was derived).
@@ -265,9 +270,30 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             )
         if self.rotation_scale == 0 or abs(self.rotation_scale) > 1:
             raise ValueError("rotation_scale must be in [-1, 0) or (0, 1]")
-        if self.rotation_style not in ("calibrated", "world_delta", "senior"):
+        if self.rotation_style not in (
+            "calibrated",
+            "calibrated_tool",
+            "world_delta",
+            "senior",
+        ):
             raise ValueError(
-                "rotation_style must be 'calibrated', 'world_delta' or 'senior'"
+                "rotation_style must be 'calibrated', 'calibrated_tool', "
+                "'world_delta' or 'senior'"
+            )
+        if self.piper_tool_center_to_j6 is not None:
+            if len(self.piper_tool_center_to_j6) != 6 or not all(
+                math.isfinite(value) for value in self.piper_tool_center_to_j6
+            ):
+                raise ValueError(
+                    "piper_tool_center_to_j6 must contain six finite values"
+                )
+        if (
+            self.rotation_style == "calibrated_tool"
+            and self.piper_tool_center_to_j6 is None
+        ):
+            raise ValueError(
+                "rotation_style='calibrated_tool' requires "
+                "piper_tool_center_to_j6"
             )
         if len(self.tracker_world_to_robot_base_rpy) != 3 or not all(
             math.isfinite(value) for value in self.tracker_world_to_robot_base_rpy

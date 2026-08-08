@@ -4,9 +4,9 @@
 # Important frame convention:
 #   E (native J6 -> gripper centre) = Ry(-90 deg) @ Tx(190 mm)
 #   C = inverse(E) = [-190, 0, 0, 0, 90, 0]
-# The teleoperator computes the gripper-centre target first, then transforms it
-# back to the native J6 EndPoseCtrl target. Follower tcp_offset_mm must remain
-# zero/omitted here, otherwise the tool offset would be applied twice.
+# The already verified local Pika gesture mapping remains unchanged. C is only
+# applied afterwards to turn the desired gripper-centre pose back into the
+# native J6 EndPoseCtrl target. Follower tcp_offset_mm must remain zero/omitted.
 #
 # This file does not replace dual_pika_piper.yaml or any single-arm config.
 # Grippers are deliberately disabled for the first wrist/J5/J6 validation.
@@ -91,15 +91,20 @@ teleop:
       use_gripper: false
       scale_xyz: 0.10
       tracker_device_id: LHR-818D4A5D
-      # Full PiperX J6 <-> gripper-centre transform, not a plain XYZ offset.
-      tracker_to_robot_eef: [-190, 0, 0, 0, 90, 0]
+      # Preserve the gesture transform already verified on both arms.
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, 150, 250, 180, 0, 0]
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: false
-      rotation_style: senior
+      rotation_style: calibrated_tool
+      # Full PiperX physical tool transform, applied after gesture mapping.
+      piper_tool_center_to_j6: [-190, 0, 0, 0, 90, 0]
       pose_adaptive_rotation: false
-      # Measured Vive tracking world -> Piper base rotation on this setup.
-      tracker_world_to_robot_base_rpy: [-1.977, -8.575, 26.508]
+      rotation_mapping_matrix: [
+        [0.000000000, 0.991000235, -0.130526192],
+        [0.000000000, 0.047154810, 0.547979619],
+        [-1.000000000, 0.125279522, 0.826245272],
+      ]
       rotation_dominant_axis: false
       rotation_scale: 0.25
       rotation_filter_alpha: 0.40
@@ -111,13 +116,18 @@ teleop:
       use_gripper: false
       scale_xyz: 0.10
       tracker_device_id: LHR-52C31F65
-      tracker_to_robot_eef: [-190, 0, 0, 0, 90, 0]
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
       robot_base_pose: [300, -150, 250, 180, 0, 0]
       use_calibrated_rotation_mapping: true
       apply_piper_tool_axis_correction: false
-      rotation_style: senior
+      rotation_style: calibrated_tool
+      piper_tool_center_to_j6: [-190, 0, 0, 0, 90, 0]
       pose_adaptive_rotation: false
-      tracker_world_to_robot_base_rpy: [-1.977, -8.575, 26.508]
+      rotation_mapping_matrix: [
+        [0.000000000, 0.991000235, -0.130526192],
+        [0.000000000, 0.047154810, 0.547979619],
+        [-1.000000000, 0.125279522, 0.826245272],
+      ]
       rotation_dominant_axis: false
       rotation_scale: 0.25
       rotation_filter_alpha: 0.40

@@ -198,6 +198,18 @@ class PiperPikaTeleop(_PikaTeleop):
         self._filtered_rotation_delta: np.ndarray | None = None
         self._begin_tracker_rot: np.ndarray | None = None
         self._begin_tracker_senior: tuple[np.ndarray, np.ndarray] | None = None
+        self._piper_tool_center_to_j6_matrix: np.ndarray | None = None
+        self._piper_j6_to_tool_center_matrix: np.ndarray | None = None
+        if config.piper_tool_center_to_j6 is not None:
+            tool_center_to_j6 = list(config.piper_tool_center_to_j6[:3]) + list(
+                map(math.radians, config.piper_tool_center_to_j6[3:6])
+            )
+            self._piper_tool_center_to_j6_matrix = (
+                Transformations.xyzrpy_to_rotation_matrix(*tool_center_to_j6)
+            )
+            self._piper_j6_to_tool_center_matrix = np.linalg.inv(
+                self._piper_tool_center_to_j6_matrix
+            )
         if config.rotation_style == "senior":
             world_to_base_rpy = tuple(
                 math.radians(float(v))
@@ -382,6 +394,7 @@ class PiperPikaTeleop(_PikaTeleop):
                     rotation_keys, corrected_vector, strict=True
                 ):
                     action[key] = float(value)
+
             else:
                 target_rotation = Transformations.rxryrz_to_rotation_matrix(
                     *(float(action[key]) for key in rotation_keys)
@@ -417,6 +430,49 @@ class PiperPikaTeleop(_PikaTeleop):
                 for key, value in zip(
                     rotation_keys, corrected_vector, strict=True
                 ):
+                    action[key] = float(value)
+
+            if self.config.rotation_style == "calibrated_tool":
+                # The calibrated branch above determines the already verified
+                # gesture direction first.  Only then convert the desired
+                # physical tool-centre pose back to Piper's native J6 pose.
+                # Doing this earlier would skip the calibrated mapping and
+                # reintroduce the observed right->up axis permutation.
+                tool_to_j6 = self._piper_tool_center_to_j6_matrix
+                j6_to_tool = self._piper_j6_to_tool_center_matrix
+                if tool_to_j6 is None or j6_to_tool is None:
+                    raise RuntimeError("Piper tool-centre transform is unavailable")
+
+                current_j6 = self.robot_base_matrix
+                current_tool = current_j6 @ j6_to_tool
+                target_j6_rotation = Transformations.rxryrz_to_rotation_matrix(
+                    *(float(action[key]) for key in rotation_keys)
+                )
+                translation_keys = (
+                    f"{self.prefix}pose.x",
+                    f"{self.prefix}pose.y",
+                    f"{self.prefix}pose.z",
+                )
+                target_j6_xyz = np.asarray(
+                    [float(action[key]) for key in translation_keys], dtype=float
+                )
+
+                target_tool = np.eye(4)
+                target_tool[:3, :3] = (
+                    target_j6_rotation @ j6_to_tool[:3, :3]
+                )
+                target_tool[:3, 3] = (
+                    current_tool[:3, 3]
+                    + target_j6_xyz
+                    - current_j6[:3, 3]
+                )
+                compensated_j6 = target_tool @ tool_to_j6
+                compensated_pose = np.asarray(
+                    Transformations.rotation_matrix_to_xyzrxryrz(compensated_j6),
+                    dtype=float,
+                )
+                pose_keys = (*translation_keys, *rotation_keys)
+                for key, value in zip(pose_keys, compensated_pose, strict=True):
                     action[key] = float(value)
 
         if not self.config.use_gripper or not self._teleop_enabled:

@@ -25,13 +25,17 @@ then sends the native J6 pose `S = G @ C` to Piper.
 ## Changes
 
 - Added `dual_pika_piper_piperx_preflight.yaml`.
-- Selected the existing full `rotation_style: senior` rigid-transform path.
-- Configured `tracker_to_robot_eef: [-190, 0, 0, 0, 90, 0]`.
+- Added `rotation_style: calibrated_tool`: the already verified calibrated
+  left/right/up/roll mapping remains unchanged, and the physical tool transform
+  is applied only after that target has been computed.
+- The calibrated mapping is executed before tool-centre compensation. This
+  ordering is essential: applying the tool transform first bypasses the proven
+  gesture matrix and causes cross-axis motion such as right becoming up.
+- Configured `piper_tool_center_to_j6: [-190, 0, 0, 0, 90, 0]` while retaining
+  the proven Pika `tracker_to_robot_eef` gesture transform.
 - Kept follower `tcp_offset_mm` disabled to prevent double compensation.
-- Applied the measured Vive-world to Piper-base rotation independently from the
-  tool transform.
-- Added rotation scaling and filtering to the full-transform path so the first
-  hardware test can be deliberately small.
+- Retained the proven raw translation matrix and calibrated wrist matrix; no
+  new world-frame direction mapping is introduced by this preflight.
 - Disabled both grippers in the preflight to isolate wrist/J5/J6 behaviour.
 
 ## First hardware validation
