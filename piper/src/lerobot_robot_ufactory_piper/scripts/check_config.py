@@ -56,6 +56,24 @@ def check(path: Path) -> list[str]:
     ]
     if len(ports) != len(set(ports)):
         errors.append("CAN/serial port names must not be reused in one configuration")
+    if teleop.get("type") == "uf::dual_pika_teleop" and teleops:
+        tracker_ids = [
+            config.get("tracker_device_id")
+            for config in teleops.values()
+            if isinstance(config, dict)
+        ]
+        uses_piper_pika = any(
+            config.get("type") == "uf::piper_pika_teleop"
+            for config in teleops.values()
+            if isinstance(config, dict)
+        )
+        if uses_piper_pika:
+            if len(tracker_ids) != 2 or not all(tracker_ids):
+                errors.append("both Piper Pikas must define tracker_device_id")
+            elif len(set(tracker_ids)) != 2:
+                errors.append(
+                    "left and right Pika must use distinct tracker_device_id values"
+                )
     return errors
 
 

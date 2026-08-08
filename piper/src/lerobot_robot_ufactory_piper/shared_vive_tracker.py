@@ -23,12 +23,21 @@ except Exception:  # pragma: no cover - dependency optional
     pysurvive = None
 
 
-class _Pose:
-    __slots__ = ("position", "rotation")
+_MAX_POSE_AGE_S = 0.5
 
-    def __init__(self, position: np.ndarray, rotation: np.ndarray) -> None:
+
+class _Pose:
+    __slots__ = ("position", "rotation", "received_at")
+
+    def __init__(
+        self,
+        position: np.ndarray,
+        rotation: np.ndarray,
+        received_at: float,
+    ) -> None:
         self.position = position
         self.rotation = rotation
+        self.received_at = received_at
 
 
 class SharedViveTracker:
@@ -91,13 +100,22 @@ class SharedViveTracker:
                         dtype=float,
                     )
                     with self._lock:
-                        self._poses[name] = _Pose(position, rotation)
+                        self._poses[name] = _Pose(
+                            position, rotation, time.monotonic()
+                        )
                 except Exception:
                     pass
 
-    def get_pose(self, device: str) -> _Pose | None:
+    def get_pose(
+        self, device: str, max_age_s: float = _MAX_POSE_AGE_S
+    ) -> _Pose | None:
         with self._lock:
-            return self._poses.get(device)
+            pose = self._poses.get(device)
+            if pose is None:
+                return None
+            if time.monotonic() - pose.received_at > max_age_s:
+                return None
+            return pose
 
     def devices(self) -> list[str]:
         with self._lock:
@@ -165,9 +183,11 @@ def _install_shared_tracker_patch() -> None:
 
     def sense_get_pose(self, device: str):
         shared = SharedViveTracker.instance()
-        pose = shared.get_pose(device)
-        if pose is not None:
-            return pose
+        # Once the shared dual-tracker context is active, never fall back to
+        # the SDK's independent context or to an indefinitely cached pose.
+        # Returning None makes the teleoperator hold its last safe target.
+        if shared.ctx is not None:
+            return shared.get_pose(device)
         if orig_sense_get_pose is not None:
             return orig_sense_get_pose(self, device)
         return None

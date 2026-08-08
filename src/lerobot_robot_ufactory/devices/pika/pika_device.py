@@ -1,3 +1,4 @@
+import math
 import time
 import logging
 
@@ -171,6 +172,32 @@ class PikaDevice(object):
 
             if self.pika_tracker_device:
                 logger.info('使用配置指定的Tracker设备: {}'.format(self.pika_tracker_device))
+                devices = []
+                valid_pose = None
+                expired_time = time.monotonic() + 15.0
+                while time.monotonic() < expired_time:
+                    devices = self._pika_sense.get_tracker_devices()
+                    pose = self._pika_sense.get_pose(self.pika_tracker_device)
+                    if pose is not None:
+                        values = [*pose.position, *pose.rotation]
+                        if values and all(math.isfinite(float(v)) for v in values):
+                            valid_pose = pose
+                            break
+                    time.sleep(0.25)
+                if valid_pose is None:
+                    logger.error(
+                        'Configured tracker %s has no fresh valid pose; detected devices: %s',
+                        self.pika_tracker_device,
+                        devices,
+                    )
+                    self.PIKA_DEVICE_MAP.pop(self._pika_sense_port, None)
+                    self._pika_sense.disconnect()
+                    self._pika_sense = None
+                    raise RuntimeError(
+                        'Configured Pika tracker {} is unavailable or stale'.format(
+                            self.pika_tracker_device
+                        )
+                    )
             else:
                 devices = []
                 expired_time = time.monotonic() + 15.0

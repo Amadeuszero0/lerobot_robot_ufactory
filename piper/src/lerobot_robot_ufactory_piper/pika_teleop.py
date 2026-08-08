@@ -87,6 +87,15 @@ class _PikaTeleop(UFactoryPikaTeleop):
             if matrix is not None
             else _RAW_TO_PIPER_TRANSLATION
         )
+        self._raw_start_xyz: np.ndarray | None = None
+        self._last_mapped_translation: np.ndarray | None = None
+
+    def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
+        super().set_teleop_enabled(enabled, obs)
+        # Every enable event must establish a fresh relative-motion origin.
+        # Reusing the previous run's tracker origin can command a large jump.
+        self._raw_start_xyz = None
+        self._last_mapped_translation = None
 
     def get_action(self) -> dict[str, Any]:
         # The parent returns its mutable internal cache.  Apply the Piper axis
@@ -118,12 +127,20 @@ class _PikaTeleop(UFactoryPikaTeleop):
             return origin + _PIKA_TO_PIPER_TRANSLATION @ (raw_target - origin)
         pose = self.pika_sense.get_pose(self.pika_device.pika_tracker_device)
         if pose is None:
-            return origin + _PIKA_TO_PIPER_TRANSLATION @ (raw_target - origin)
+            if self._last_mapped_translation is not None:
+                return self._last_mapped_translation.copy()
+            return origin.copy()
         raw_m = np.asarray(pose.position, dtype=float)
-        if not hasattr(self, "_raw_start_xyz") or self._raw_start_xyz is None:
+        if raw_m.shape != (3,) or not np.all(np.isfinite(raw_m)):
+            if self._last_mapped_translation is not None:
+                return self._last_mapped_translation.copy()
+            return origin.copy()
+        if self._raw_start_xyz is None:
             self._raw_start_xyz = raw_m.copy()
         delta_mm = (raw_m - self._raw_start_xyz) * 1000.0 * self.config.scale_xyz
-        return origin + self._raw_to_piper @ delta_mm
+        mapped = origin + self._raw_to_piper @ delta_mm
+        self._last_mapped_translation = mapped.copy()
+        return mapped
 
     def run(self) -> None:
         self._is_connected = True

@@ -125,6 +125,11 @@ class DualPiperFollowerConfig(RobotConfig):
         self.id = "dual_piper_follower" if self.id is None else self.id
         if len(self.robots) != 2:
             raise ValueError("uf::dual_piper requires exactly two follower arms")
+        ports = [getattr(robot, "port", None) for robot in self.robots.values()]
+        if any(port is None for port in ports):
+            raise ValueError("each dual Piper follower must define a CAN port")
+        if len(set(ports)) != len(ports):
+            raise ValueError("dual Piper followers must use distinct CAN ports")
 
 
 @TeleoperatorConfig.register_subclass("uf::piper_leader")
@@ -161,6 +166,22 @@ class DualPikaTeleopConfig(TeleoperatorConfig):
         self.id = "dual_pika" if self.id is None else self.id
         if len(self.teleops) != 2:
             raise ValueError("uf::dual_pika_teleop requires exactly two Pika devices")
+        ports = [getattr(teleop, "port", None) for teleop in self.teleops.values()]
+        if any(port is None for port in ports):
+            raise ValueError("each dual Pika teleoperator must define a serial port")
+        if len(set(ports)) != len(ports):
+            raise ValueError("dual Pika teleoperators must use distinct serial ports")
+        tracker_ids = [
+            getattr(teleop, "tracker_device_id", None)
+            for teleop in self.teleops.values()
+        ]
+        if any(tracker_ids):
+            if not all(tracker_ids):
+                raise ValueError(
+                    "configure tracker_device_id for both Pikas or for neither"
+                )
+            if len(set(tracker_ids)) != len(tracker_ids):
+                raise ValueError("dual Pikas must use distinct tracker_device_id values")
 
 
 @TeleoperatorConfig.register_subclass("uf::piper_pika_teleop")
