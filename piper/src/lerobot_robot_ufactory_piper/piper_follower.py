@@ -330,8 +330,20 @@ class PiperFollower(Robot):
             and not getattr(self, "_force_step_cartesian", False)
         )
         if direct_command and not (translation_in_deadband and rotation_in_deadband):
-            translation_error = math.dist(current_xyz, bounded_xyz)
-            angular_error = rotation_distance(current_rotation, desired_rotation)
+            # Apply translation and rotation deadbands independently. Previously,
+            # rotating the Pika caused the direct branch to follow small XYZ noise
+            # even when translation was inside its deadband. That made a wrist-only
+            # gesture pull the whole arm sideways or vertically.
+            direct_xyz_target = (
+                current_xyz if translation_in_deadband else bounded_xyz
+            )
+            direct_rotation_target = (
+                current_rotation if rotation_in_deadband else desired_rotation
+            )
+            translation_error = math.dist(current_xyz, direct_xyz_target)
+            angular_error = rotation_distance(
+                current_rotation, direct_rotation_target
+            )
             if (
                 translation_error > self.config.max_cartesian_following_error_mm
                 or angular_error > self.config.max_rotation_following_error_rad
@@ -354,17 +366,17 @@ class PiperFollower(Robot):
                 max_direct_step = getattr(self.config, "direct_max_step_mm", None)
                 if max_direct_step is not None and max_direct_step > 0:
                     limited_xyz = vector_step_towards(
-                        current_xyz, bounded_xyz, max_direct_step
+                        current_xyz, direct_xyz_target, max_direct_step
                     )
                 else:
-                    limited_xyz = bounded_xyz
+                    limited_xyz = direct_xyz_target
                 max_direct_rot = getattr(self.config, "direct_max_step_rad", None)
                 if max_direct_rot is not None and max_direct_rot > 0:
                     limited_rotation = vector_step_towards(
-                        current_rotation, desired_rotation, max_direct_rot
+                        current_rotation, direct_rotation_target, max_direct_rot
                     )
                 else:
-                    limited_rotation = desired_rotation
+                    limited_rotation = direct_rotation_target
         elif tracking_blocked:
             limited_xyz = command_xyz
             limited_rotation = command_rotation
