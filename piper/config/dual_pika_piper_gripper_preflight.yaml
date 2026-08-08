@@ -16,12 +16,13 @@ robot:
       id: left_piper
       port: can_left
       control_space: cartesian
-      configure_role_on_connect: true
+      configure_role_on_connect: false
       piper_init_on_connect: false
+      enable_torque_on_connect: false
       park_on_connect: false
       park_on_disconnect: false
       disable_torque_on_disconnect: false
-      hold_position_on_disconnect: true
+      hold_position_on_disconnect: false
       feedback_startup_timeout_s: 5.0
       cartesian_command_mode: direct
       max_cartesian_step_mm: 1.0
@@ -33,6 +34,7 @@ robot:
       translation_deadband_mm: 5.0
       rotation_deadband_rad: 0.02
       lock_orientation: true
+      send_cartesian_pose: false
       workspace_x: [50.0, 600.0]
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]
@@ -54,12 +56,13 @@ robot:
       id: right_piper
       port: can_right
       control_space: cartesian
-      configure_role_on_connect: true
+      configure_role_on_connect: false
       piper_init_on_connect: false
+      enable_torque_on_connect: false
       park_on_connect: false
       park_on_disconnect: false
       disable_torque_on_disconnect: false
-      hold_position_on_disconnect: true
+      hold_position_on_disconnect: false
       feedback_startup_timeout_s: 5.0
       cartesian_command_mode: direct
       max_cartesian_step_mm: 1.0
@@ -71,6 +74,7 @@ robot:
       translation_deadband_mm: 5.0
       rotation_deadband_rad: 0.02
       lock_orientation: true
+      send_cartesian_pose: false
       workspace_x: [50.0, 600.0]
       workspace_y: [-500.0, 500.0]
       workspace_z: [50.0, 600.0]

@@ -100,7 +100,8 @@ class PiperFollower(Robot):
             if self.config.configure_role_on_connect:
                 self.bus.set_follower()
                 time.sleep(0.1)
-            self.bus.enable_torque()
+            if self.config.enable_torque_on_connect:
+                self.bus.enable_torque()
             self._wait_for_feedback()
             # This integration uses the Piper's fixed factory ranges, so it is
             # normally already calibrated. Avoid moving the gripper merely
@@ -383,8 +384,10 @@ class PiperFollower(Robot):
         if self.config.send_gripper:
             gripper_unit = min(1.0, max(0.0, local["gripper.pos"]))
         now_s = time.monotonic()
-        pose_command_needed = not tracking_blocked and not (
-            translation_in_deadband and rotation_in_deadband
+        pose_command_needed = (
+            self.config.send_cartesian_pose
+            and not tracking_blocked
+            and not (translation_in_deadband and rotation_in_deadband)
         )
         pose_due = (
             now_s - self._last_pose_command_time_s

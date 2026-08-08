@@ -27,6 +27,10 @@ class PiperFollowerConfig(RobotConfig):
     # dual-arm profiles to use the same explicit, piper_init=False connection
     # path as the verified direct gripper test.
     piper_init_on_connect: bool = True
+    # Existing arm profiles explicitly enable all joints on connect. A
+    # gripper-only diagnostic can leave the already-running arm state untouched
+    # to exactly match a direct SDK GripperCtrl test.
+    enable_torque_on_connect: bool = True
     park_on_connect: bool = False
     park_on_disconnect: bool = False
     disable_torque_on_disconnect: bool = True
@@ -40,6 +44,9 @@ class PiperFollowerConfig(RobotConfig):
     translation_deadband_mm: float = 0.0
     rotation_deadband_rad: float = 0.0
     lock_orientation: bool = False
+    # Allows a true gripper-only profile: observations and gripper commands
+    # remain active, but EndPoseCtrl/ModeCtrl are never sent by send_action.
+    send_cartesian_pose: bool = True
     # Ported from the senior lerobot_real fork: 'step' keeps the original
     # per-cycle limiter; 'direct' sends the full target with following-error
     # guards (smoother MOVE P tracking).
