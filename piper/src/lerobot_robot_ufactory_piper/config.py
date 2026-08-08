@@ -22,6 +22,11 @@ class PiperFollowerConfig(RobotConfig):
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
 
     configure_role_on_connect: bool = True
+    # The SDK's PiperInit helper performs its own control writes. Keep the
+    # historical default for existing single-arm profiles, while allowing
+    # dual-arm profiles to use the same explicit, piper_init=False connection
+    # path as the verified direct gripper test.
+    piper_init_on_connect: bool = True
     park_on_connect: bool = False
     park_on_disconnect: bool = False
     disable_torque_on_disconnect: bool = True
@@ -65,6 +70,7 @@ class PiperFollowerConfig(RobotConfig):
     gripper_command_deadband: float = 0.0
     gripper_min_command_interval_s: float | None = None
     gripper_keepalive_s: float | None = None
+    gripper_debug: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()

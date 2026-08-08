@@ -17,6 +17,7 @@ robot:
       port: can_left
       control_space: cartesian
       configure_role_on_connect: true
+      piper_init_on_connect: false
       park_on_connect: false
       park_on_disconnect: false
       disable_torque_on_disconnect: false
@@ -46,6 +47,7 @@ robot:
       gripper_command_deadband: 0.0
       gripper_min_command_interval_s: 0.03
       gripper_keepalive_s: 0.03
+      gripper_debug: true
       cameras: {}
     right:
       type: uf::piper
@@ -53,6 +55,7 @@ robot:
       port: can_right
       control_space: cartesian
       configure_role_on_connect: true
+      piper_init_on_connect: false
       park_on_connect: false
       park_on_disconnect: false
       disable_torque_on_disconnect: false
@@ -79,6 +82,7 @@ robot:
       gripper_command_deadband: 0.0
       gripper_min_command_interval_s: 0.03
       gripper_keepalive_s: 0.03
+      gripper_debug: true
       cameras: {}
 
 teleop:

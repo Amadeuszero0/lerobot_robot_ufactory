@@ -42,6 +42,7 @@ class PiperFollower(Robot):
         self._last_pose_command_time_s = 0.0
         self._last_gripper_command_time_s = 0.0
         self._last_gripper_command: float | None = None
+        self._last_gripper_debug_time_s = 0.0
         self._last_pose_command: tuple[float, float, float, float, float, float] | None = None
         self._locked_rotation: tuple[float, float, float] | None = None
         self._force_step_cartesian = False
@@ -94,7 +95,7 @@ class PiperFollower(Robot):
         self._last_pose_command_time_s = 0.0
         self._last_gripper_command_time_s = 0.0
         self._last_gripper_command = None
-        self.bus.connect()
+        self.bus.connect(piper_init=self.config.piper_init_on_connect)
         try:
             if self.config.configure_role_on_connect:
                 self.bus.set_follower()
@@ -426,6 +427,18 @@ class PiperFollower(Robot):
                     effort=self.config.gripper_effort,
                     ctrl_code=self.config.gripper_ctrl_code,
                 )
+                if (
+                    self.config.gripper_debug
+                    and now_s - self._last_gripper_debug_time_s >= 0.5
+                ):
+                    logger.info(
+                        "Piper %s gripper command: %.1f mm (normalized %.3f, ctrl 0x%02X)",
+                        self.id,
+                        gripper_unit * 68.0,
+                        gripper_unit,
+                        self.config.gripper_ctrl_code,
+                    )
+                    self._last_gripper_debug_time_s = now_s
                 self._last_gripper_command = gripper_unit
                 self._last_gripper_command_time_s = now_s
         sent = dict(zip(POSE_KEYS, limited, strict=True))
@@ -466,6 +479,7 @@ class PiperFollower(Robot):
         self._last_pose_command_time_s = 0.0
         self._last_gripper_command_time_s = 0.0
         self._last_gripper_command = None
+        self._last_gripper_debug_time_s = 0.0
 
 
 class DualPiperFollower(Robot):
