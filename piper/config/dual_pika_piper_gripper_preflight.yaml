@@ -6,7 +6,10 @@ robot:
   id: dual_piper_gripper_preflight
   parallel_connect: true
   parallel_observation: true
-  parallel_action: true
+  # Piper SDK command writes are serialized. The two CAN interfaces are
+  # independent, but concurrent SDK writes can be lost without raising an
+  # exception; sequential writes still run inside the same 50 Hz loop.
+  parallel_action: false
   robots:
     left:
       type: uf::piper
