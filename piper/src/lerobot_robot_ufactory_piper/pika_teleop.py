@@ -149,6 +149,13 @@ class _PikaTeleop(UFactoryPikaTeleop):
         sleep_time = 1.0 / self.config.frequency
         while not self.stop_event.is_set():
             time.sleep(sleep_time)
+            # A DualPikaTeleop is enabled and paused as one unit by the parent
+            # control loop.  Letting each child's hardware button state toggle
+            # itself can immediately undo the parent's Enter-to-start event and
+            # leave one or both sides paused.  Single-Pika instances do not set
+            # this flag and retain the original button behavior.
+            if getattr(self, "_external_enable_control", False):
+                continue
             state = self.pika_sense.get_command_state()
             if state == current_state:
                 continue
@@ -453,6 +460,7 @@ class DualPikaTeleop(UFBaseTeleop):
                 self.teleops[side] = PiperPikaTeleop(teleop_config, prefix=side)
             else:
                 self.teleops[side] = _PikaTeleop(teleop_config, prefix=side)
+            self.teleops[side]._external_enable_control = True
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="dual-pika")
 
     @property

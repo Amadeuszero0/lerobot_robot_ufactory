@@ -174,7 +174,10 @@ class Transformations:
                     axis[2] *= -1
             # 注意：可能存在符号歧义，但旋转效果相同
             
-            axis = axis / np.linalg.norm(axis)
+            axis_norm = np.linalg.norm(axis)
+            if axis_norm < eps:
+                return np.zeros(3)
+            axis = axis / axis_norm
             return axis * theta
 
         # 情况 3: 一般情况 (0 < theta < pi)
@@ -185,7 +188,10 @@ class Transformations:
             R[1, 0] - R[0, 1]
         ]) / (2 * sin_theta)
 
-        axis = axis / np.linalg.norm(axis)  # 确保单位长度（数值误差可能破坏）
+        axis_norm = np.linalg.norm(axis)
+        if axis_norm < eps:
+            return np.zeros(3)
+        axis = axis / axis_norm  # 确保单位长度（数值误差可能破坏）
         return axis * theta
     
     @classmethod
