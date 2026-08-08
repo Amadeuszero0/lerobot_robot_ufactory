@@ -7,8 +7,14 @@ import numpy as np
 from lerobot_robot_ufactory.devices.umi.vive_tracker.transformations import Transformations
 
 
+def _axis_angle_rotation_matrix(rx: float, ry: float, rz: float) -> np.ndarray:
+    if math.sqrt(rx * rx + ry * ry + rz * rz) <= 1e-12:
+        return np.eye(3, dtype=float)
+    return Transformations.rxryrz_to_rotation_matrix(rx, ry, rz)
+
+
 def axis_angle_to_rpy_degrees(rx: float, ry: float, rz: float) -> tuple[float, float, float]:
-    rotation = Transformations.rxryrz_to_rotation_matrix(rx, ry, rz)
+    rotation = _axis_angle_rotation_matrix(rx, ry, rz)
     roll, pitch, yaw = Transformations.rotation_matrix_to_rpy(rotation)
     return tuple(math.degrees(value) for value in (roll, pitch, yaw))
 
@@ -23,13 +29,39 @@ def rpy_degrees_to_axis_angle(
     return tuple(float(value) for value in result)
 
 
+def j6_to_tcp_xyz(
+    j6_xyz: tuple[float, float, float],
+    rotation_rxryrz: tuple[float, float, float],
+    tcp_offset_mm: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """Convert the SDK J6 origin to a TCP expressed in the robot base frame."""
+    rotation = _axis_angle_rotation_matrix(*rotation_rxryrz)
+    tcp_xyz = np.asarray(j6_xyz, dtype=float) + rotation @ np.asarray(
+        tcp_offset_mm, dtype=float
+    )
+    return tuple(float(value) for value in tcp_xyz)
+
+
+def tcp_to_j6_xyz(
+    tcp_xyz: tuple[float, float, float],
+    rotation_rxryrz: tuple[float, float, float],
+    tcp_offset_mm: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """Convert a desired TCP target back to the SDK J6 origin."""
+    rotation = _axis_angle_rotation_matrix(*rotation_rxryrz)
+    j6_xyz = np.asarray(tcp_xyz, dtype=float) - rotation @ np.asarray(
+        tcp_offset_mm, dtype=float
+    )
+    return tuple(float(value) for value in j6_xyz)
+
+
 def rotation_distance(
     rxryrz_a: tuple[float, float, float],
     rxryrz_b: tuple[float, float, float],
 ) -> float:
     """True angular distance (rad) between two axis-angle rotations."""
-    ra = Transformations.rxryrz_to_rotation_matrix(*rxryrz_a)
-    rb = Transformations.rxryrz_to_rotation_matrix(*rxryrz_b)
+    ra = _axis_angle_rotation_matrix(*rxryrz_a)
+    rb = _axis_angle_rotation_matrix(*rxryrz_b)
     d = ra.T @ rb
     cos_theta = min(1.0, max(-1.0, (float(np.trace(d)) - 1.0) / 2.0))
     return math.acos(cos_theta)

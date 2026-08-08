@@ -58,6 +58,10 @@ class PiperFollowerConfig(RobotConfig):
     # from stalling the firmware MOVE P replanner on fast gestures.
     direct_max_step_mm: float | None = None
     direct_max_step_rad: float | None = None
+    # Piper SDK EndPose feedback/control is located at the J6 origin. This
+    # local-frame offset makes Cartesian actions target the physical tool
+    # centre point instead. The official Piper gripper TCP is [0, 0, 145] mm.
+    tcp_offset_mm: tuple[float, ...] = (0.0, 0.0, 0.0)
     startup_tcp_pose: tuple[float, ...] | None = None
     startup_move_timeout_s: float = 30.0
     hold_position_on_disconnect: bool = False
@@ -123,6 +127,10 @@ class PiperFollowerConfig(RobotConfig):
             raise ValueError("direct_max_step_mm must be positive when set")
         if self.direct_max_step_rad is not None and self.direct_max_step_rad <= 0:
             raise ValueError("direct_max_step_rad must be positive when set")
+        if len(self.tcp_offset_mm) != 3 or not all(
+            math.isfinite(float(value)) for value in self.tcp_offset_mm
+        ):
+            raise ValueError("tcp_offset_mm must contain three finite values")
 
 
 @RobotConfig.register_subclass("uf::dual_piper")

@@ -14,7 +14,15 @@ from lerobot.utils.errors import DeviceNotConnectedError
 from .config import DualPiperFollowerConfig, PiperFollowerConfig
 from .motors import PiperMotorsBus
 from .motors.tables import CALIBRATION, MOTORS
-from .pose import axis_angle_to_rpy_degrees, clamp, rotation_distance, rpy_degrees_to_axis_angle, vector_step_towards
+from .pose import (
+    axis_angle_to_rpy_degrees,
+    clamp,
+    j6_to_tcp_xyz,
+    rotation_distance,
+    rpy_degrees_to_axis_angle,
+    tcp_to_j6_xyz,
+    vector_step_towards,
+)
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -187,7 +195,10 @@ class PiperFollower(Robot):
             while True:
                 current = self.bus.get_end_pose()
                 current_rotation = rpy_degrees_to_axis_angle(*current[3:6])
-                translation_error = math.dist(current[:3], target[:3])
+                current_tcp_xyz = j6_to_tcp_xyz(
+                    current[:3], current_rotation, self.config.tcp_offset_mm
+                )
+                translation_error = math.dist(current_tcp_xyz, target[:3])
                 angular_error = rotation_distance(current_rotation, target_rotation)
                 if (
                     translation_error <= translation_tolerance_mm
@@ -217,8 +228,11 @@ class PiperFollower(Robot):
         else:
             x, y, z, roll, pitch, yaw = self.bus.get_end_pose()
             rx, ry, rz = rpy_degrees_to_axis_angle(roll, pitch, yaw)
+            tcp_xyz = j6_to_tcp_xyz(
+                (x, y, z), (rx, ry, rz), self.config.tcp_offset_mm
+            )
             gripper = self.bus.get_joint_position()["gripper"] / 100.0
-            local = dict(zip(POSE_KEYS, (x, y, z, rx, ry, rz), strict=True))
+            local = dict(zip(POSE_KEYS, (*tcp_xyz, rx, ry, rz), strict=True))
             local["gripper.pos"] = gripper
 
         observation = {self._key(key): value for key, value in local.items()}
@@ -267,8 +281,10 @@ class PiperFollower(Robot):
     def _send_cartesian_action(self, local: dict[str, float]) -> dict[str, float]:
         x, y, z, roll, pitch, yaw = self.bus.get_end_pose()
         current_rx, current_ry, current_rz = rpy_degrees_to_axis_angle(roll, pitch, yaw)
-        current_xyz = (x, y, z)
         current_rotation = (current_rx, current_ry, current_rz)
+        current_xyz = j6_to_tcp_xyz(
+            (x, y, z), current_rotation, self.config.tcp_offset_mm
+        )
         target = tuple(local[key] for key in POSE_KEYS)
         # Clamp the target before limiting the step. Clamping the already-limited
         # command could cause a large jump when the current pose is outside bounds.
@@ -406,8 +422,11 @@ class PiperFollower(Robot):
             >= self.config.min_command_interval_s
         )
         if pose_command_needed and pose_due:
+            j6_xyz = tcp_to_j6_xyz(
+                tuple(limited[:3]), tuple(limited[3:6]), self.config.tcp_offset_mm
+            )
             self.bus.set_end_pose(
-                (*limited[:3], roll_deg, pitch_deg, yaw_deg),
+                (*j6_xyz, roll_deg, pitch_deg, yaw_deg),
                 move_mode=self.config.move_mode,
                 speed_percent=self.config.move_speed_percent,
             )
