@@ -1,0 +1,138 @@
+# 当前硬件适配版：双 PiPER-X 软件 IK 只读预览。
+# 硬件绑定与当前正式配置保持一致：
+#   左臂 Piper: can_left       右臂 Piper: can_right
+#   左手 Pika: /dev/pika_left  右手 Pika: /dev/pika_right
+#   左 Tracker: LHR-818D4A5D  右 Tracker: LHR-52C31F65
+# 本配置 enable_torque_on_connect=false、dry_run=true，不发送运动或夹爪命令。
+#
+# This profile opens both CAN interfaces only for feedback. It never calls
+# ModeCtrl, JointCtrl, EndPoseCtrl, or GripperCtrl. Move/rotate each Pika and
+# inspect the "IK PREVIEW" lines: wrist gestures must create plausible
+# J4/J5/J6 deltas before the actuated profile is allowed.
+robot:
+  type: uf::dual_piper_joint_stream
+  id: history_dual_piper_x_ik_preview_current_hardware
+  parallel_connect: true
+  parallel_observation: true
+  parallel_action: false
+  robots:
+    left:
+      type: uf::piper_joint_stream
+      id: left_piper_x_preview
+      port: can_left
+      kinematic_model: piper_x
+      tool_xyz_mm: [0.0, 0.0, 142.5]
+      tool_rpy_deg: [0.0, 0.0, 0.0]
+      configure_role_on_connect: false
+      piper_init_on_connect: false
+      enable_torque_on_connect: false
+      disable_torque_on_disconnect: false
+      dry_run: true
+      dry_run_log_interval_s: 0.20
+      workspace_x: [20.0, 750.0]
+      workspace_y: [-650.0, 650.0]
+      workspace_z: [20.0, 750.0]
+      max_cartesian_step_mm: 3.0
+      max_rotation_step_rad: 0.020
+      translation_deadband_mm: 1.5
+      rotation_deadband_rad: 0.004
+      max_joint_step_deg: 0.5
+      ik_max_iter: 30
+      ik_damping: 0.001
+      ik_weight_ori: 1.0
+      ik_residual_limit: 0.01
+      move_speed_percent: 15
+      send_gripper: false
+      cameras: {}
+    right:
+      type: uf::piper_joint_stream
+      id: right_piper_x_preview
+      port: can_right
+      kinematic_model: piper_x
+      tool_xyz_mm: [0.0, 0.0, 142.5]
+      tool_rpy_deg: [0.0, 0.0, 0.0]
+      configure_role_on_connect: false
+      piper_init_on_connect: false
+      enable_torque_on_connect: false
+      disable_torque_on_disconnect: false
+      dry_run: true
+      dry_run_log_interval_s: 0.20
+      workspace_x: [20.0, 750.0]
+      workspace_y: [-650.0, 650.0]
+      workspace_z: [20.0, 750.0]
+      max_cartesian_step_mm: 3.0
+      max_rotation_step_rad: 0.020
+      translation_deadband_mm: 1.5
+      rotation_deadband_rad: 0.004
+      max_joint_step_deg: 0.5
+      ik_max_iter: 30
+      ik_damping: 0.001
+      ik_weight_ori: 1.0
+      ik_residual_limit: 0.01
+      move_speed_percent: 15
+      send_gripper: false
+      cameras: {}
+
+teleop:
+  type: uf::dual_pika_teleop
+  id: history_dual_pika_x_ik_preview_current_hardware
+  parallel_read: true
+  teleops:
+    left:
+      type: uf::piper_pika_teleop
+      id: left_pika
+      port: /dev/pika_left
+      frequency: 50
+      use_gripper: false
+      scale_xyz: 0.10
+      tracker_device_id: LHR-818D4A5D
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+      robot_base_pose: [300, 150, 250, 180, 0, 0]
+      use_raw_translation_mapping: true
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: false
+      rotation_style: calibrated
+      pose_adaptive_rotation: false
+      rotation_mapping_matrix: [
+        [0.000000000, 0.991000235, -0.130526192],
+        [0.000000000, 0.047154810, 0.547979619],
+        [-1.000000000, 0.125279522, 0.826245272],
+      ]
+      rotation_dominant_axis: false
+      rotation_scale: 0.25
+      rotation_filter_alpha: 0.40
+    right:
+      type: uf::piper_pika_teleop
+      id: right_pika
+      port: /dev/pika_right
+      frequency: 50
+      use_gripper: false
+      scale_xyz: 0.10
+      tracker_device_id: LHR-52C31F65
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+      robot_base_pose: [300, -150, 250, 180, 0, 0]
+      use_raw_translation_mapping: true
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: false
+      rotation_style: calibrated
+      pose_adaptive_rotation: false
+      rotation_mapping_matrix: [
+        [0.000000000, 0.991000235, -0.130526192],
+        [0.000000000, 0.047154810, 0.547979619],
+        [-1.000000000, 0.125279522, 0.826245272],
+      ]
+      rotation_dominant_axis: false
+      rotation_scale: 0.25
+      rotation_filter_alpha: 0.40
+
+fps: 50
+
+dataset:
+  root: /home/star/lerobot_data/history_ed30ad0/dual_piper_x_ik_preview
+  repo_id: local/history_ed30ad0_dual_piper_x_ik_preview
+  single_task: 历史版本双 PiPER-X 软件 IK 只读预览
+  fps: 50
+  episode_time_s: 15
+  reset_time_s: 20
+  num_episodes: 1
+  push_to_hub: false
