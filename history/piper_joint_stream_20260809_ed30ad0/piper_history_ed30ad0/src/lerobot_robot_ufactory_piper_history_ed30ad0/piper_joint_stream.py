@@ -30,6 +30,7 @@ from lerobot.utils.errors import DeviceNotConnectedError
 
 from .motors import PiperMotorsBus
 from .motors.tables import CALIBRATION, MOTORS
+from .joint_stream_stabilizer import JointStreamStabilizer
 from .piper_kinematics import PiperKinematics
 from .pose import (
     axis_angle_to_rpy_degrees,
@@ -74,9 +75,18 @@ class PiperJointStreamConfig(RobotConfig):
 
     # Joint streaming.
     max_joint_step_deg: float = 3.0
+    # 修复模式默认关闭，确保历史配置仍可原样复现。开启后，IK 以上一次关节命令为连续
+    # 参考，并增加速度、加速度、跟随误差和 IK 解跳变保护。
+    stabilized_stream: bool = False
+    control_frequency_hz: float = 50.0
+    max_joint_velocity_deg_s: float = 6.0
+    max_joint_acceleration_deg_s2: float = 60.0
+    max_joint_following_error_deg: float = 1.5
+    max_ik_solution_jump_deg: float = 2.0
     ik_max_iter: int = 10
     ik_damping: float = 1e-3
     ik_weight_ori: float = 1.0
+    ik_seed_weight: float = 0.0
     ik_residual_limit: float = 0.03
     move_speed_percent: int = 30
     # Select the actual mechanism. PiPER-X must never use the ordinary Piper
@@ -111,8 +121,19 @@ class PiperJointStreamConfig(RobotConfig):
             raise ValueError("Cartesian step limits must be positive")
         if self.max_joint_step_deg <= 0:
             raise ValueError("max_joint_step_deg must be positive")
+        for name in (
+            "control_frequency_hz",
+            "max_joint_velocity_deg_s",
+            "max_joint_acceleration_deg_s2",
+            "max_joint_following_error_deg",
+            "max_ik_solution_jump_deg",
+        ):
+            if not math.isfinite(float(getattr(self, name))) or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be a finite positive value")
         if not 0 < self.ik_damping:
             raise ValueError("ik_damping must be positive")
+        if not math.isfinite(float(self.ik_seed_weight)) or self.ik_seed_weight < 0:
+            raise ValueError("ik_seed_weight must be finite and non-negative")
         if self.kinematic_model not in ("piper", "piper_x"):
             raise ValueError("kinematic_model must be 'piper' or 'piper_x'")
         if self.dry_run_log_interval_s <= 0:
@@ -176,7 +197,9 @@ class PiperJointStreamFollower(Robot):
         self._last_gripper_cmd: float | None = None
         self._last_gripper_time_s: float = 0.0
         self._last_ik_warning_s: float = 0.0
+        self._last_guard_warning_s: float = 0.0
         self._last_dry_run_log_s: float = 0.0
+        self._stabilizer: JointStreamStabilizer | None = None
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
                 max_workers=len(self.cameras),
@@ -325,6 +348,9 @@ class PiperJointStreamFollower(Robot):
     def _send_cartesian_joint_stream(
         self, local: dict[str, float]
     ) -> dict[str, float]:
+        if self.config.stabilized_stream:
+            return self._send_cartesian_joint_stream_stabilized(local)
+
         q_current = self._current_joints_rad()
         x, y, z, roll, pitch, yaw = self._kinematics().forward_xyzrpy(q_current)
         current_rx, current_ry, current_rz = rpy_degrees_to_axis_angle(
@@ -374,6 +400,7 @@ class PiperJointStreamFollower(Robot):
             max_iter=self.config.ik_max_iter,
             damping=self.config.ik_damping,
             weight_ori=self.config.ik_weight_ori,
+            seed_weight=self.config.ik_seed_weight,
         )
         if residual > self.config.ik_residual_limit:
             now_s = time.monotonic()
@@ -405,6 +432,136 @@ class PiperJointStreamFollower(Robot):
                     residual,
                     np.round(delta_deg, 3).tolist(),
                     np.round(delta_deg[3:6], 3).tolist(),
+                )
+                self._last_dry_run_log_s = now_s
+        else:
+            millideg = tuple(int(round(v * _RAD_TO_MILLIDEG)) for v in q_send)
+            self._send_joints(millideg)
+
+        if self.config.send_gripper and not self.config.dry_run:
+            self._send_gripper(local["gripper.pos"], sent)
+        return sent
+
+    def _get_stabilizer(self, q_feedback: np.ndarray, now_s: float) -> JointStreamStabilizer:
+        if self._stabilizer is None:
+            self._stabilizer = JointStreamStabilizer(
+                frequency_hz=self.config.control_frequency_hz,
+                max_velocity_deg_s=self.config.max_joint_velocity_deg_s,
+                max_acceleration_deg_s2=self.config.max_joint_acceleration_deg_s2,
+                max_step_deg=self.config.max_joint_step_deg,
+                max_following_error_deg=self.config.max_joint_following_error_deg,
+                max_ik_jump_deg=self.config.max_ik_solution_jump_deg,
+            )
+            self._stabilizer.reset(q_feedback, now_s)
+        return self._stabilizer
+
+    def _send_cartesian_joint_stream_stabilized(
+        self, local: dict[str, float]
+    ) -> dict[str, float]:
+        """以连续命令为参考求 IK，并对关节速度、加速度和跟随误差实施保护。"""
+
+        now_s = time.monotonic()
+        q_feedback = self._current_joints_rad()
+        stabilizer = self._get_stabilizer(q_feedback, now_s)
+        assert stabilizer.command_rad is not None
+        q_command = stabilizer.command_rad.copy()
+
+        # 关键修复：从上一次已发送命令的预测位姿推进，不再从滞后的真实反馈重复起步。
+        x, y, z, roll, pitch, yaw = self._kinematics().forward_xyzrpy(q_command)
+        current_rx, current_ry, current_rz = rpy_degrees_to_axis_angle(
+            roll, pitch, yaw
+        )
+        command_xyz = np.array([x, y, z], dtype=float)
+        command_rot = np.array([current_rx, current_ry, current_rz], dtype=float)
+        target = np.array([local[key] for key in POSE_KEYS], dtype=float)
+        bounded_xyz = np.array(
+            [
+                clamp(target[0], self.config.workspace_x),
+                clamp(target[1], self.config.workspace_y),
+                clamp(target[2], self.config.workspace_z),
+            ],
+            dtype=float,
+        )
+
+        sent = dict(zip(POSE_KEYS, target, strict=True))
+        if self.config.send_gripper:
+            sent["gripper.pos"] = local["gripper.pos"]
+
+        in_deadband = (
+            np.linalg.norm(bounded_xyz - command_xyz)
+            <= self.config.translation_deadband_mm
+            and np.linalg.norm(target[3:6] - command_rot)
+            <= self.config.rotation_deadband_rad
+        )
+        if in_deadband:
+            stabilizer.stop(now_s)
+            if self.config.send_gripper and not self.config.dry_run:
+                self._send_gripper(local["gripper.pos"], sent)
+            return sent
+
+        limited_xyz = vector_step_towards(
+            tuple(command_xyz),
+            tuple(bounded_xyz),
+            self.config.max_cartesian_step_mm,
+        )
+        limited_rot = vector_step_towards(
+            tuple(command_rot),
+            tuple(target[3:6]),
+            self.config.max_rotation_step_rad,
+        )
+        roll_deg, pitch_deg, yaw_deg = axis_angle_to_rpy_degrees(*limited_rot)
+
+        kin = self._kinematics()
+        q_target, residual = kin.ik(
+            limited_xyz,
+            (roll_deg, pitch_deg, yaw_deg),
+            q_command,
+            max_iter=self.config.ik_max_iter,
+            damping=self.config.ik_damping,
+            weight_ori=self.config.ik_weight_ori,
+            seed_weight=self.config.ik_seed_weight,
+        )
+        if residual > self.config.ik_residual_limit:
+            if now_s - self._last_ik_warning_s >= 1.0:
+                logger.warning(
+                    "STABLE IK residual %.4f > %.4f; holding command",
+                    residual,
+                    self.config.ik_residual_limit,
+                )
+                self._last_ik_warning_s = now_s
+            stabilizer.stop(now_s)
+            q_target = q_command
+
+        result = stabilizer.advance(
+            q_target,
+            q_feedback,
+            now_s=now_s,
+            dry_run=self.config.dry_run,
+        )
+        if result.reason != "ok" and now_s - self._last_guard_warning_s >= 1.0:
+            logger.warning(
+                "STABLE STREAM HOLD %s reason=%s following=%.3fdeg ik_jump=%.3fdeg",
+                self.id,
+                result.reason,
+                result.following_error_deg,
+                result.ik_jump_deg,
+            )
+            self._last_guard_warning_s = now_s
+
+        q_send = result.command_rad
+        self._last_joint_cmd_rad = q_send.copy()
+        if self.config.dry_run:
+            if now_s - self._last_dry_run_log_s >= self.config.dry_run_log_interval_s:
+                logger.warning(
+                    "STABLE IK PREVIEW %s residual=%.5f reason=%s "
+                    "follow=%.3fdeg ik_jump=%.3fdeg step=%s wrist_step=%s",
+                    self.id,
+                    residual,
+                    result.reason,
+                    result.following_error_deg,
+                    result.ik_jump_deg,
+                    np.round(np.degrees(result.step_rad), 4).tolist(),
+                    np.round(np.degrees(result.step_rad[3:6]), 4).tolist(),
                 )
                 self._last_dry_run_log_s = now_s
         else:
@@ -470,6 +627,7 @@ class PiperJointStreamFollower(Robot):
             park=self.config.park_on_disconnect,
         )
         self._last_joint_cmd_rad = None
+        self._stabilizer = None
 
 
 class DualPiperJointStreamFollower(Robot):

@@ -266,6 +266,7 @@ class PiperKinematics:
         tol: float = 1e-4,
         damping: float = 1e-3,
         weight_ori: float = 1.0,
+        seed_weight: float = 0.0,
         jac_reuse: int = 2,
     ) -> tuple[np.ndarray, float]:
         """LM IK. Target is in the SDK frame; base/ee handled internally."""
@@ -279,6 +280,7 @@ class PiperKinematics:
             self.lower,
             self.upper,
         )
+        q_reference = q.copy()
         W2 = np.diag([1.0, 1.0, 1.0, weight_ori, weight_ori, weight_ori]) ** 2
         lam = float(damping)
         max_step = math.radians(0.5)
@@ -292,8 +294,10 @@ class PiperKinematics:
                 break
             if J is None or it % jac_reuse == 0:
                 J = self._jacobian(q)
-            A = J.T @ W2 @ J + lam * np.eye(6)
-            dq = np.linalg.solve(A, J.T @ W2 @ err)
+            seed_weight_sq = float(seed_weight) ** 2
+            A = J.T @ W2 @ J + (lam + seed_weight_sq) * np.eye(6)
+            rhs = J.T @ W2 @ err + seed_weight_sq * (q_reference - q)
+            dq = np.linalg.solve(A, rhs)
             step = float(np.max(np.abs(dq)))
             if step > max_step:
                 dq = dq * (max_step / step)

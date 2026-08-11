@@ -65,3 +65,17 @@ python -c "import lerobot_robot_ufactory_piper_history_ed30ad0 as h; print(h.__f
 
 实际运行配置以独立包内部的 `config/current_hardware/` 为准。完整测试流程必须逐步执行，
 每一步检查结果后才能继续。
+
+## 修复版配置位置
+
+修复版位于独立包的 `config/current_hardware/`：
+
+| 顺序 | 配置 | 行为 |
+|---|---|---|
+| 03 | `03_stabilized_joint_stream_preview.yaml` | 双臂只读模拟 |
+| 04 | `04_stabilized_joint_stream_left_only_DANGER.yaml` | 仅左臂带动力 |
+| 05 | `05_stabilized_joint_stream_right_only_DANGER.yaml` | 仅右臂带动力 |
+| 06 | `06_stabilized_joint_stream_dual_DANGER.yaml` | 双臂带动力 |
+
+原历史 `01/02` 保持 `stabilized_stream: false`，用于复现和对照；修复版 `03～06` 才启用
+连续命令参考、速度/加速度限制、跟随误差保护和 IK 跳变保护。

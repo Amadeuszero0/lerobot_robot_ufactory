@@ -40,6 +40,28 @@ uf-piper-history-ed30ad0-teleop \
 
 文件名带 `02` 和 `DANGER` 的配置会使能机械臂并发送关节命令，不属于上述只读流程。
 
+## 抖动修复版
+
+修复版不会覆盖原历史算法；只有配置中明确设置 `stabilized_stream: true` 时才启用。
+主要变化如下：
+
+- IK 以上一次已发送关节命令为种子和运动参考，不再每周期从滞后的真实反馈重新起步；
+- 新增每关节速度和加速度限制，避免只有位置步长限制导致的速度突变；
+- 真实反馈落后命令超过阈值时停止推进，等待机械臂追上；
+- IK 解相对上一命令跳变过大时拒绝发送；
+- IK 加入贴近上一命令的正则项，并提高阻尼、降低姿态权重；
+- 第一阶段关闭夹爪、降低 Pika 缩放和机械臂速度；
+- 修复版退出时断开关节使能。
+
+修复版配置必须按顺序测试：
+
+1. `03_stabilized_joint_stream_preview.yaml`：双臂只读模拟；
+2. `04_stabilized_joint_stream_left_only_DANGER.yaml`：仅左臂带动力，右臂只读；
+3. `05_stabilized_joint_stream_right_only_DANGER.yaml`：仅右臂带动力，左臂只读；
+4. `06_stabilized_joint_stream_dual_DANGER.yaml`：双臂带动力。
+
+后一个阶段只有在前一个阶段的日志和实机表现通过人工复核后才能运行。
+
 # 原历史项目说明（Pika / Piper 遥操作与数据采集）
 
 本目录是 `lerobot_robot_ufactory` 的 Piper 子项目：复用父项目的 Pika、相机和录制流程，加入 Piper 单臂/双臂 follower、leader、Pika 遥操作与三种单臂执行模式。**不修改父项目文件**。

@@ -1,0 +1,170 @@
+# 危险：修复后的左臂单独带动力测试；右臂只读模拟。
+# 必须先通过 03 只读预览。
+# 硬件绑定与当前正式配置保持一致：
+#   左臂 Piper: can_left       右臂 Piper: can_right
+#   左手 Pika: /dev/pika_left  右手 Pika: /dev/pika_right
+#   左 Tracker: LHR-818D4A5D  右 Tracker: LHR-52C31F65
+# Uses the official PiPER-X mechanism and controls the official gripper centre
+# (142.5 mm along link6 local Z) with normal JointCtrl position mode.
+robot:
+  type: uf::dual_piper_joint_stream
+  id: fixed_left_piper_x_stabilized_stream_test
+  parallel_connect: true
+  parallel_observation: true
+  parallel_action: false
+  robots:
+    left:
+      type: uf::piper_joint_stream
+      id: left_piper_x
+      port: can_left
+      kinematic_model: piper_x
+      tool_xyz_mm: [0.0, 0.0, 142.5]
+      configure_role_on_connect: false
+      piper_init_on_connect: false
+      enable_torque_on_connect: true
+      disable_torque_on_disconnect: true
+      dry_run: false
+      workspace_x: [20.0, 750.0]
+      workspace_y: [-650.0, 650.0]
+      workspace_z: [20.0, 750.0]
+      max_cartesian_step_mm: 0.5
+      max_rotation_step_rad: 0.003
+      translation_deadband_mm: 1.5
+      rotation_deadband_rad: 0.004
+      max_joint_step_deg: 0.10
+      stabilized_stream: true
+      control_frequency_hz: 50.0
+      max_joint_velocity_deg_s: 3.0
+      max_joint_acceleration_deg_s2: 20.0
+      max_joint_following_error_deg: 0.75
+      max_ik_solution_jump_deg: 1.0
+      ik_max_iter: 30
+      ik_damping: 0.02
+      ik_weight_ori: 0.5
+      ik_seed_weight: 0.05
+      ik_residual_limit: 0.01
+      move_speed_percent: 8
+      send_gripper: false
+      gripper_effort: 1000
+      gripper_ctrl_code: 3
+      gripper_command_deadband: 0.005
+      gripper_min_command_interval_s: 0.03
+      gripper_keepalive_s: 0.20
+      cameras: {}
+    right:
+      type: uf::piper_joint_stream
+      id: right_piper_x
+      port: can_right
+      kinematic_model: piper_x
+      tool_xyz_mm: [0.0, 0.0, 142.5]
+      configure_role_on_connect: false
+      piper_init_on_connect: false
+      enable_torque_on_connect: false
+      # 右臂未由本配置使能，退出时也不改变它原有的使能状态。
+      disable_torque_on_disconnect: false
+      dry_run: true
+      workspace_x: [20.0, 750.0]
+      workspace_y: [-650.0, 650.0]
+      workspace_z: [20.0, 750.0]
+      max_cartesian_step_mm: 0.5
+      max_rotation_step_rad: 0.003
+      translation_deadband_mm: 1.5
+      rotation_deadband_rad: 0.004
+      max_joint_step_deg: 0.10
+      stabilized_stream: true
+      control_frequency_hz: 50.0
+      max_joint_velocity_deg_s: 3.0
+      max_joint_acceleration_deg_s2: 20.0
+      max_joint_following_error_deg: 0.75
+      max_ik_solution_jump_deg: 1.0
+      ik_max_iter: 30
+      ik_damping: 0.02
+      ik_weight_ori: 0.5
+      ik_seed_weight: 0.05
+      ik_residual_limit: 0.01
+      move_speed_percent: 8
+      send_gripper: false
+      gripper_effort: 1000
+      gripper_ctrl_code: 3
+      gripper_command_deadband: 0.005
+      gripper_min_command_interval_s: 0.03
+      gripper_keepalive_s: 0.20
+      cameras: {}
+
+teleop:
+  type: uf::dual_pika_teleop
+  id: fixed_left_pika_x_stabilized_stream_test
+  parallel_read: true
+  teleops:
+    left:
+      type: uf::piper_pika_teleop
+      id: left_pika
+      port: /dev/pika_left
+      frequency: 50
+      use_gripper: false
+      scale_xyz: 0.05
+      tracker_device_id: LHR-818D4A5D
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+      robot_base_pose: [300, 150, 250, 180, 0, 0]
+      use_raw_translation_mapping: true
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: false
+      rotation_style: calibrated
+      pose_adaptive_rotation: false
+      rotation_mapping_matrix: [
+        [0.000000000, 0.991000235, -0.130526192],
+        [0.000000000, 0.047154810, 0.547979619],
+        [-1.000000000, 0.125279522, 0.826245272],
+      ]
+      rotation_dominant_axis: false
+      rotation_scale: 0.10
+      rotation_filter_alpha: 0.40
+      gripper_use_direct_distance: true
+      gripper_distance_min_mm: 0.4
+      gripper_distance_max_mm: 98.1
+      gripper_filter_window: 3
+      gripper_filter_alpha: 0.75
+      gripper_deadband: 0.005
+      gripper_max_step: 0.15
+    right:
+      type: uf::piper_pika_teleop
+      id: right_pika
+      port: /dev/pika_right
+      frequency: 50
+      use_gripper: false
+      scale_xyz: 0.05
+      tracker_device_id: LHR-52C31F65
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+      robot_base_pose: [300, -150, 250, 180, 0, 0]
+      use_raw_translation_mapping: true
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: false
+      rotation_style: calibrated
+      pose_adaptive_rotation: false
+      rotation_mapping_matrix: [
+        [0.000000000, 0.991000235, -0.130526192],
+        [0.000000000, 0.047154810, 0.547979619],
+        [-1.000000000, 0.125279522, 0.826245272],
+      ]
+      rotation_dominant_axis: false
+      rotation_scale: 0.10
+      rotation_filter_alpha: 0.40
+      gripper_use_direct_distance: true
+      gripper_distance_min_mm: 0.4
+      gripper_distance_max_mm: 98.1
+      gripper_filter_window: 3
+      gripper_filter_alpha: 0.75
+      gripper_deadband: 0.005
+      gripper_max_step: 0.15
+
+fps: 50
+
+dataset:
+  root: /home/star/lerobot_data/history_ed30ad0/fixed_stabilized_left_only
+  repo_id: local/history_ed30ad0_fixed_stabilized_left_only
+  single_task: 修复版 PiPER-X 稳定关节流左臂单独测试
+  fps: 50
+  episode_time_s: 15
+  reset_time_s: 20
+  num_episodes: 1
+  push_to_hub: false
