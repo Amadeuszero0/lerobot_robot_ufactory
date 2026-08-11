@@ -29,7 +29,7 @@ piper/
 | `single_pika_piper_setting_record.yaml` | 单臂录制版 | 同上 + Intel D435i RGB 相机（相机路径按机器修改） |
 | `single_pika_piper.yaml` | 基础模板 | 占位符模板，替换 CAN/相机/数据集后使用 |
 
-双臂配置（不参与单臂版本编号）：`dual_pika_direct.yaml`（只采集）、`dual_pika_piper.yaml`（Pika 控双臂）、`dual_piper_leader_follower.yaml`（Piper 主从）。
+双臂配置（不参与单臂版本编号）：`dual_pika_direct.yaml`（只采集）、`dual_pika_piper.yaml`（当前稳定双臂）、`dual_pika_piper_measured_translation.yaml`（左右实测平移矩阵与 0.50 比例测试）、`dual_piper_leader_follower.yaml`（Piper 主从）。
 
 ### 与旧版（V16/V17）的对比
 
