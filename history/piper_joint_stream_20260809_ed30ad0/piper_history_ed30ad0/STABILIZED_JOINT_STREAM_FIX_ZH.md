@@ -83,7 +83,7 @@ Pika 旋转比例             0.10
 
 ## 完整动态复测配置
 
-`07_stabilized_joint_stream_dual_full_DANGER.yaml` 用于在原历史 `02` Stage 1 的动态输入范围下
-复测抖动：双臂和双夹爪启用，笛卡尔步长 1 mm、旋转步长 0.006 rad、关节步长上限
-0.20°、Piper 速度 12%、Pika 平移比例 0.10、旋转比例 0.20。该配置仍保留 8°/s
+`07_stabilized_joint_stream_dual_full_DANGER.yaml` 用于完整幅度复测抖动：双臂和双夹爪启用，
+笛卡尔步长 1 mm、旋转步长 0.006 rad、关节步长上限
+0.20°、Piper 固件跟随速度 50%、Pika 平移比例 0.35、旋转比例 0.35。该配置仍保留 8°/s
 关节速度限制、50°/s² 加速度限制、1° 跟随误差保护和 1° IK 跳变保护。

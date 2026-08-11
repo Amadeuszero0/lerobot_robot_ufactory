@@ -59,9 +59,10 @@ uf-piper-history-ed30ad0-teleop \
 2. `04_stabilized_joint_stream_left_only_DANGER.yaml`：仅左臂带动力，右臂只读；
 3. `05_stabilized_joint_stream_right_only_DANGER.yaml`：仅右臂带动力，左臂只读；
 4. `06_stabilized_joint_stream_dual_DANGER.yaml`：双臂带动力。
-5. `07_stabilized_joint_stream_dual_full_DANGER.yaml`：双臂、双夹爪完整动态测试，恢复原历史 `02` 的动态输入范围，同时保留全部稳定保护。
+5. `07_stabilized_joint_stream_dual_full_DANGER.yaml`：双臂、双夹爪完整幅度测试，提高固件跟随和 Pika 映射，同时保留全部稳定保护。
 
 `07` 比 `06` 更快；只有需要在原历史动态范围下复测抖动时才运行。
+其 Piper 固件跟随速度为 50%，但软件关节命令仍受 8°/s、50°/s² 和 0.20°/周期三层限制。
 
 # 原历史项目说明（Pika / Piper 遥操作与数据采集）
 
