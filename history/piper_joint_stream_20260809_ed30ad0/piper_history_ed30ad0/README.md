@@ -59,8 +59,9 @@ uf-piper-history-ed30ad0-teleop \
 2. `04_stabilized_joint_stream_left_only_DANGER.yaml`：仅左臂带动力，右臂只读；
 3. `05_stabilized_joint_stream_right_only_DANGER.yaml`：仅右臂带动力，左臂只读；
 4. `06_stabilized_joint_stream_dual_DANGER.yaml`：双臂带动力。
+5. `07_stabilized_joint_stream_dual_full_DANGER.yaml`：双臂、双夹爪完整动态测试，恢复原历史 `02` 的动态输入范围，同时保留全部稳定保护。
 
-后一个阶段只有在前一个阶段的日志和实机表现通过人工复核后才能运行。
+`07` 比 `06` 更快；只有需要在原历史动态范围下复测抖动时才运行。
 
 # 原历史项目说明（Pika / Piper 遥操作与数据采集）
 

@@ -76,6 +76,7 @@ python -c "import lerobot_robot_ufactory_piper_history_ed30ad0 as h; print(h.__f
 | 04 | `04_stabilized_joint_stream_left_only_DANGER.yaml` | 仅左臂带动力 |
 | 05 | `05_stabilized_joint_stream_right_only_DANGER.yaml` | 仅右臂带动力 |
 | 06 | `06_stabilized_joint_stream_dual_DANGER.yaml` | 双臂带动力 |
+| 07 | `07_stabilized_joint_stream_dual_full_DANGER.yaml` | 双臂、双夹爪，原历史 02 动态范围 |
 
 原历史 `01/02` 保持 `stabilized_stream: false`，用于复现和对照；修复版 `03～06` 才启用
 连续命令参考、速度/加速度限制、跟随误差保护和 IK 跳变保护。
