@@ -126,8 +126,17 @@ python piper/tools/monitor_piper.py --port can0
 # 基站（灯塔）标定：首次 / 移动基站后
 uf-vive-calibrate --force-calibrate
 
-# Pika 定位器到夹持中心偏移（手腕有假平移时）
-python piper/tools/calibrate_tracker_offset.py --port /dev/ttyUSB0
+# 左右 Pika 定位器到手腕旋转中心的偏移（纯旋转出现假平移时）
+# scale 必须与运行配置一致；每侧建议独立重复 2～3 次。
+python piper/tools/calibrate_tracker_offset.py \
+  --port /dev/pika_left \
+  --tracker LHR-818D4A5D \
+  --scale 0.50
+
+python piper/tools/calibrate_tracker_offset.py \
+  --port /dev/pika_right \
+  --tracker LHR-52C31F65 \
+  --scale 0.50
 
 # Pika 轴向测量（生成平移映射矩阵，改基站布局后跑）
 python piper/tools/measure_pika_piper_mapping.py \

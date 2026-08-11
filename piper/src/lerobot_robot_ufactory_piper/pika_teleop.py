@@ -73,6 +73,34 @@ _PIPER_TOOL_AXIS_CORRECTION = np.array(
 )
 
 
+def tracker_control_point_mm(
+    position_m: np.ndarray,
+    rotation_quaternion: np.ndarray,
+    scale_xyz: float,
+    tracker_to_control_offset_mm: np.ndarray,
+) -> np.ndarray:
+    """Return the scaled operator control point in the Vive world frame.
+
+    The tracker is normally offset from the point about which the operator
+    rotates the Pika.  Mapping the tracker origin directly makes a pure wrist
+    rotation look like a Cartesian translation.  ``tracker_to_control_offset``
+    is already expressed in scaled millimetres, matching the existing
+    ``tracker_to_robot_eef`` calibration tool and parent Pika convention.
+    """
+
+    position = np.asarray(position_m, dtype=float)
+    quaternion = np.asarray(rotation_quaternion, dtype=float)
+    offset = np.asarray(tracker_to_control_offset_mm, dtype=float)
+    if position.shape != (3,) or not np.all(np.isfinite(position)):
+        raise ValueError("tracker position must contain three finite values")
+    if quaternion.shape != (4,) or not np.all(np.isfinite(quaternion)):
+        raise ValueError("tracker quaternion must contain four finite values")
+    if offset.shape != (3,) or not np.all(np.isfinite(offset)):
+        raise ValueError("tracker control offset must contain three finite values")
+    rotation = Transformations.quaternion_to_rotation_matrix(quaternion)
+    return position * 1000.0 * float(scale_xyz) + rotation @ offset
+
+
 class _PikaTeleop(UFactoryPikaTeleop):
     """Local bug-fix subclass; the parent Pika implementation is left untouched."""
 
@@ -87,14 +115,17 @@ class _PikaTeleop(UFactoryPikaTeleop):
             if matrix is not None
             else _RAW_TO_PIPER_TRANSLATION
         )
-        self._raw_start_xyz: np.ndarray | None = None
+        self._tracker_to_control_offset_mm = np.asarray(
+            self.config.tracker_to_robot_eef[:3], dtype=float
+        )
+        self._raw_start_control_xyz_mm: np.ndarray | None = None
         self._last_mapped_translation: np.ndarray | None = None
 
     def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
         super().set_teleop_enabled(enabled, obs)
         # Every enable event must establish a fresh relative-motion origin.
         # Reusing the previous run's tracker origin can command a large jump.
-        self._raw_start_xyz = None
+        self._raw_start_control_xyz_mm = None
         self._last_mapped_translation = None
 
     def get_action(self) -> dict[str, Any]:
@@ -131,13 +162,25 @@ class _PikaTeleop(UFactoryPikaTeleop):
                 return self._last_mapped_translation.copy()
             return origin.copy()
         raw_m = np.asarray(pose.position, dtype=float)
-        if raw_m.shape != (3,) or not np.all(np.isfinite(raw_m)):
+        raw_quaternion = np.asarray(pose.rotation, dtype=float)
+        if (
+            raw_m.shape != (3,)
+            or raw_quaternion.shape != (4,)
+            or not np.all(np.isfinite(raw_m))
+            or not np.all(np.isfinite(raw_quaternion))
+        ):
             if self._last_mapped_translation is not None:
                 return self._last_mapped_translation.copy()
             return origin.copy()
-        if self._raw_start_xyz is None:
-            self._raw_start_xyz = raw_m.copy()
-        delta_mm = (raw_m - self._raw_start_xyz) * 1000.0 * self.config.scale_xyz
+        control_xyz_mm = tracker_control_point_mm(
+            raw_m,
+            raw_quaternion,
+            self.config.scale_xyz,
+            self._tracker_to_control_offset_mm,
+        )
+        if self._raw_start_control_xyz_mm is None:
+            self._raw_start_control_xyz_mm = control_xyz_mm.copy()
+        delta_mm = control_xyz_mm - self._raw_start_control_xyz_mm
         mapped = origin + self._raw_to_piper @ delta_mm
         self._last_mapped_translation = mapped.copy()
         return mapped

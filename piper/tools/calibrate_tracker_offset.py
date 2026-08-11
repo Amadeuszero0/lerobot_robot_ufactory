@@ -30,6 +30,10 @@ import time
 
 import numpy as np
 
+# Reuse the same shared Vive context as dual-Pika teleoperation so persistent
+# LHR serials work and the two temporary Txx aliases cannot swap sides.
+import lerobot_robot_ufactory_piper.shared_vive_tracker  # noqa: F401
+
 from lerobot_robot_ufactory.devices.pika import PikaDevice
 from lerobot_robot_ufactory.devices.umi.vive_tracker.transformations import (
     Transformations,
@@ -46,6 +50,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", default="/dev/ttyUSB50")
     parser.add_argument(
+        "--tracker",
+        default=None,
+        help="固定 Tracker 序列号，例如 LHR-818D4A5D",
+    )
+    parser.add_argument(
         "--scale",
         type=float,
         default=1.0,
@@ -55,7 +64,11 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=0.02)
     args = parser.parse_args()
 
-    pika = PikaDevice(1, pika_sense_port=args.port)
+    pika = PikaDevice(
+        1,
+        pika_sense_port=args.port,
+        pika_tracker_device=args.tracker,
+    )
     sense = pika.pika_sense
     dev = pika.pika_tracker_device
     print(f"Tracker device: {dev}")
