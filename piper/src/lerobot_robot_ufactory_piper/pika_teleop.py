@@ -1,10 +1,11 @@
+import logging
 import math
 import time
 from collections import deque
-
-import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+
+import numpy as np
 
 from lerobot_robot_ufactory.teleoperators.base_teleop import UFBaseTeleop
 from lerobot_robot_ufactory.devices.umi.vive_tracker.transformations import (
@@ -16,6 +17,9 @@ from lerobot_robot_ufactory.teleoperators.pika_teleop import (
 from lerobot_robot_ufactory.teleoperators.pika_teleop import PikaTeleopConfig
 
 from .config import DualPikaTeleopConfig, PiperPikaTeleopConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 # Calibrated on 2026-08-03 using Pika right/forward/up translation tests.
@@ -119,14 +123,24 @@ class _PikaTeleop(UFactoryPikaTeleop):
             self.config.tracker_to_robot_eef[:3], dtype=float
         )
         self._raw_start_control_xyz_mm: np.ndarray | None = None
+        self._raw_mapping_robot_origin: np.ndarray | None = None
         self._last_mapped_translation: np.ndarray | None = None
+        self._last_translation_gate_quaternion: np.ndarray | None = None
+        self._last_translation_gate_time_s: float | None = None
+        self._translation_rotation_locked = False
+        self._translation_rotation_quiet_since_s: float | None = None
 
     def set_teleop_enabled(self, enabled: bool, obs: dict | None = None) -> None:
         super().set_teleop_enabled(enabled, obs)
         # Every enable event must establish a fresh relative-motion origin.
         # Reusing the previous run's tracker origin can command a large jump.
         self._raw_start_control_xyz_mm = None
+        self._raw_mapping_robot_origin = None
         self._last_mapped_translation = None
+        self._last_translation_gate_quaternion = None
+        self._last_translation_gate_time_s = None
+        self._translation_rotation_locked = False
+        self._translation_rotation_quiet_since_s = None
 
     def get_action(self) -> dict[str, Any]:
         # The parent returns its mutable internal cache.  Apply the Piper axis
@@ -180,10 +194,100 @@ class _PikaTeleop(UFactoryPikaTeleop):
         )
         if self._raw_start_control_xyz_mm is None:
             self._raw_start_control_xyz_mm = control_xyz_mm.copy()
+            self._raw_mapping_robot_origin = origin.copy()
+
+        released = self._update_translation_rotation_gate(
+            raw_quaternion, time.monotonic()
+        )
+        if self._translation_rotation_locked:
+            if self._last_mapped_translation is not None:
+                return self._last_mapped_translation.copy()
+            return origin.copy()
+        if released:
+            # Discard the tracker's rotation arc and resume translation from
+            # the held robot endpoint.  This prevents a jump on gate release.
+            self._raw_start_control_xyz_mm = control_xyz_mm.copy()
+            self._raw_mapping_robot_origin = (
+                self._last_mapped_translation.copy()
+                if self._last_mapped_translation is not None
+                else origin.copy()
+            )
+
         delta_mm = control_xyz_mm - self._raw_start_control_xyz_mm
-        mapped = origin + self._raw_to_piper @ delta_mm
+        mapping_origin = (
+            self._raw_mapping_robot_origin
+            if self._raw_mapping_robot_origin is not None
+            else origin
+        )
+        mapped = mapping_origin + self._raw_to_piper @ delta_mm
         self._last_mapped_translation = mapped.copy()
         return mapped
+
+    def _update_translation_rotation_gate(
+        self, quaternion: np.ndarray, now_s: float
+    ) -> bool:
+        """Update rotation-intent hysteresis; return True on lock release."""
+
+        if not getattr(self.config, "freeze_translation_while_rotating", False):
+            return False
+
+        q = np.asarray(quaternion, dtype=float)
+        norm = float(np.linalg.norm(q))
+        if norm < 1e-9:
+            return False
+        q = q / norm
+        if (
+            self._last_translation_gate_quaternion is None
+            or self._last_translation_gate_time_s is None
+        ):
+            self._last_translation_gate_quaternion = q
+            self._last_translation_gate_time_s = now_s
+            return False
+
+        dt_s = max(1e-4, now_s - self._last_translation_gate_time_s)
+        if dt_s < self.config.translation_rotation_speed_window_s:
+            return False
+        dot = min(
+            1.0,
+            max(
+                -1.0,
+                float(np.dot(self._last_translation_gate_quaternion, q)),
+            ),
+        )
+        angular_step_rad = 2.0 * math.acos(abs(dot))
+        angular_speed_rad_s = angular_step_rad / dt_s
+        self._last_translation_gate_quaternion = q
+        self._last_translation_gate_time_s = now_s
+
+        lock_speed = self.config.translation_rotation_lock_speed_rad_s
+        release_speed = self.config.translation_rotation_release_speed_rad_s
+        if not self._translation_rotation_locked:
+            if angular_speed_rad_s >= lock_speed:
+                self._translation_rotation_locked = True
+                self._translation_rotation_quiet_since_s = None
+                logger.info(
+                    "Pika %s freezes XYZ during wrist rotation (%.3f rad/s)",
+                    self.id,
+                    angular_speed_rad_s,
+                )
+            return False
+
+        if angular_speed_rad_s > release_speed:
+            self._translation_rotation_quiet_since_s = None
+            return False
+        if self._translation_rotation_quiet_since_s is None:
+            self._translation_rotation_quiet_since_s = now_s
+            return False
+        if (
+            now_s - self._translation_rotation_quiet_since_s
+            < self.config.translation_rotation_release_delay_s
+        ):
+            return False
+
+        self._translation_rotation_locked = False
+        self._translation_rotation_quiet_since_s = None
+        logger.info("Pika %s resumes XYZ from a new rotation-free origin", self.id)
+        return True
 
     def run(self) -> None:
         self._is_connected = True

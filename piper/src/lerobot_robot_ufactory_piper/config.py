@@ -247,6 +247,15 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     # measured module-level matrix).
     tracker_device_id: str | None = None
     raw_translation_matrix: tuple[tuple[float, float, float], ...] | None = None
+    # Optional intent gate for operators who perform translation and rotation
+    # as separate gestures.  While tracker angular speed is above the engage
+    # threshold, hold XYZ and keep sending orientation/gripper commands.  Once
+    # rotation has settled, re-anchor translation without an endpoint jump.
+    freeze_translation_while_rotating: bool = False
+    translation_rotation_lock_speed_rad_s: float = 0.15
+    translation_rotation_release_speed_rad_s: float = 0.05
+    translation_rotation_release_delay_s: float = 0.15
+    translation_rotation_speed_window_s: float = 0.08
     # Override the calibrated rotation mapping (raw tracker relative rotation
     # vector -> EEF-local rotation vector) when re-derived for a specific
     # pose. Columns are the mapped directions for raw X (roll), raw Y (pitch),
@@ -308,6 +317,26 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
                 len(row) != 3 for row in self.raw_translation_matrix
             ):
                 raise ValueError("raw_translation_matrix must be a 3x3 matrix")
+        if self.translation_rotation_lock_speed_rad_s <= 0:
+            raise ValueError(
+                "translation_rotation_lock_speed_rad_s must be positive"
+            )
+        if not (
+            0 <= self.translation_rotation_release_speed_rad_s
+            < self.translation_rotation_lock_speed_rad_s
+        ):
+            raise ValueError(
+                "translation_rotation_release_speed_rad_s must be non-negative "
+                "and smaller than the lock speed"
+            )
+        if self.translation_rotation_release_delay_s < 0:
+            raise ValueError(
+                "translation_rotation_release_delay_s must be non-negative"
+            )
+        if self.translation_rotation_speed_window_s <= 0:
+            raise ValueError(
+                "translation_rotation_speed_window_s must be positive"
+            )
         if self.rotation_mapping_matrix is not None:
             if len(self.rotation_mapping_matrix) != 3 or any(
                 len(row) != 3 for row in self.rotation_mapping_matrix

@@ -222,3 +222,17 @@ uf-piper-teleop \
 ```
 
 完整原因、预期日志和判断方法见 `PIPER_X_J5_DIAGNOSIS_ZH.md`。
+
+## 无固定点标定：转腕时冻结平移
+
+如果固定点装置无法把 Tracker 到夹持中心的偏移重复标定到 5 mm 内，不必继续反复标定。可以在保留已验证 J5 映射、平移矩阵、速度和夹爪参数的基础上，改用分步手势测试版：
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_j5_rotation_lock_test.yaml \
+  2>&1 | tee /tmp/piper_x_rotation_lock_test.log
+```
+
+该模式用 80 ms 时间窗判断转腕：转动期间冻结 XYZ，但姿态和夹爪继续更新；手腕停稳 0.15 秒后，从当前机械臂位置重新建立平移零点，因此不会在恢复时跳动。它不需要 Tracker 偏移标定，但必须把“平移”和“转腕”分开做，不能同时进行。
+
+这只能消除 Pika Tracker 圆弧造成的假平移。PiPER-X 腕部转轴并不共点，`MOVE_P + EndPoseCtrl` 为满足末端位姿仍可能合理地联动 J2/J3；详细原因见 `PIPER_X_WRIST_COUPLING_ZH.md`。

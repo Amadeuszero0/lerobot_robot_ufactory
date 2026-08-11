@@ -84,3 +84,22 @@ def test_j5_test_keeps_measured_translation_and_stable_motion_settings() -> None
         ]
         assert candidate[side]["scale_xyz"] == baseline[side]["scale_xyz"] == 0.50
         assert candidate[side]["rotation_scale"] == 0.60
+
+
+def test_rotation_lock_profile_only_adds_separate_gesture_gate() -> None:
+    baseline = _load_teleops("dual_pika_piper_x_j5_test.yaml")
+    candidate = _load_teleops("dual_pika_piper_x_j5_rotation_lock_test.yaml")
+
+    for side in ("left", "right"):
+        assert candidate[side]["raw_translation_matrix"] == baseline[side][
+            "raw_translation_matrix"
+        ]
+        assert candidate[side]["rotation_mapping_matrix"] == baseline[side][
+            "rotation_mapping_matrix"
+        ]
+        assert candidate[side]["rotation_scale"] == baseline[side]["rotation_scale"]
+        assert candidate[side]["freeze_translation_while_rotating"] is True
+        assert candidate[side]["translation_rotation_lock_speed_rad_s"] == 0.12
+        assert candidate[side]["translation_rotation_release_speed_rad_s"] == 0.04
+        assert candidate[side]["translation_rotation_release_delay_s"] == 0.15
+        assert candidate[side]["translation_rotation_speed_window_s"] == 0.08
