@@ -79,3 +79,4 @@ python -c "import lerobot_robot_ufactory_piper_history_ed30ad0 as h; print(h.__f
 
 原历史 `01/02` 保持 `stabilized_stream: false`，用于复现和对照；修复版 `03～06` 才启用
 连续命令参考、速度/加速度限制、跟随误差保护和 IK 跳变保护。
+带动力配置 `04～06` 退出时只断开通信，不解除关节使能，以保持机械臂当前姿态。

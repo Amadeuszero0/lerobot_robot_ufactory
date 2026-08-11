@@ -22,7 +22,8 @@ robot:
       configure_role_on_connect: false
       piper_init_on_connect: false
       enable_torque_on_connect: true
-      disable_torque_on_disconnect: true
+      # 与现行 Pika-Piper 配置一致：退出只断开通信，保持当前姿态。
+      disable_torque_on_disconnect: false
       dry_run: false
       workspace_x: [20.0, 750.0]
       workspace_y: [-650.0, 650.0]
@@ -60,7 +61,8 @@ robot:
       configure_role_on_connect: false
       piper_init_on_connect: false
       enable_torque_on_connect: true
-      disable_torque_on_disconnect: true
+      # 与现行 Pika-Piper 配置一致：退出只断开通信，保持当前姿态。
+      disable_torque_on_disconnect: false
       dry_run: false
       workspace_x: [20.0, 750.0]
       workspace_y: [-650.0, 650.0]
