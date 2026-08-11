@@ -1,0 +1,144 @@
+# 双 Pika + 双 PiPER-X J5 只读预览。
+#
+# 此配置只读取 Pika 和两台 PiPER-X 的反馈，并使用 PiPER-X 模型计算目标关节；
+# 不发送 ModeCtrl、JointCtrl、EndPoseCtrl 或 GripperCtrl。先运行本配置，确认：
+#   左手向左摆腕  -> left 的 J5 目标明显减小；
+#   右手向右摆腕  -> right 的 J5 目标明显增大。
+# 日志会显示 J5=当前角度->目标角度(变化量)，便于区分姿态映射和固件 IK 问题。
+robot:
+  type: uf::dual_piper_joint_stream
+  id: dual_piper_x_j5_preview
+  parallel_connect: true
+  parallel_observation: true
+  parallel_action: false
+  robots:
+    left:
+      type: uf::piper_joint_stream
+      id: left_piper_x_j5_preview
+      port: can_left
+      kinematic_model: piper_x
+      # 与当前 MOVE_P 路径一致：EndPoseCtrl 控制原生 J6 坐标系，不加 TCP 偏移。
+      tool_xyz_mm: [0.0, 0.0, 0.0]
+      configure_role_on_connect: false
+      piper_init_on_connect: false
+      enable_torque_on_connect: false
+      disable_torque_on_disconnect: false
+      dry_run: true
+      dry_run_log_interval_s: 0.20
+      workspace_x: [50.0, 600.0]
+      workspace_y: [-500.0, 500.0]
+      workspace_z: [50.0, 600.0]
+      max_cartesian_step_mm: 15.0
+      max_rotation_step_rad: 0.18
+      translation_deadband_mm: 5.0
+      rotation_deadband_rad: 0.020
+      max_joint_step_deg: 3.0
+      ik_max_iter: 40
+      ik_damping: 0.01
+      ik_weight_ori: 1.0
+      ik_residual_limit: 0.02
+      send_gripper: false
+      cameras: {}
+    right:
+      type: uf::piper_joint_stream
+      id: right_piper_x_j5_preview
+      port: can_right
+      kinematic_model: piper_x
+      tool_xyz_mm: [0.0, 0.0, 0.0]
+      configure_role_on_connect: false
+      piper_init_on_connect: false
+      enable_torque_on_connect: false
+      disable_torque_on_disconnect: false
+      dry_run: true
+      dry_run_log_interval_s: 0.20
+      workspace_x: [50.0, 600.0]
+      workspace_y: [-500.0, 500.0]
+      workspace_z: [50.0, 600.0]
+      max_cartesian_step_mm: 15.0
+      max_rotation_step_rad: 0.18
+      translation_deadband_mm: 5.0
+      rotation_deadband_rad: 0.020
+      max_joint_step_deg: 3.0
+      ik_max_iter: 40
+      ik_damping: 0.01
+      ik_weight_ori: 1.0
+      ik_residual_limit: 0.02
+      send_gripper: false
+      cameras: {}
+
+teleop:
+  type: uf::dual_pika_teleop
+  id: dual_pika_piper_x_j5_preview
+  parallel_read: true
+  teleops:
+    left:
+      type: uf::piper_pika_teleop
+      id: left_pika
+      port: /dev/pika_left
+      frequency: 100
+      use_gripper: false
+      scale_xyz: 0.50
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+      robot_base_pose: [300, 150, 250, 180, 0, 0]
+      tracker_device_id: LHR-818D4A5D
+      use_raw_translation_mapping: true
+      raw_translation_matrix: [
+        [0.749125989, -0.659224359, -0.065065328],
+        [0.659294133, 0.751519460, -0.023446675],
+        [0.064354479, -0.025332676, 0.997605511],
+      ]
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: false
+      rotation_style: calibrated
+      pose_adaptive_rotation: false
+      # 2026-08-11 左 Pika 三个实测旋转动作的独立拟合：
+      # 低头 -> 局部 -X，向右摆腕 -> 局部 +Y(J5)，手柄滚转 -> 局部 +Z(J6)。
+      rotation_mapping_matrix: [
+        [0.633970937, 0.786430682, 0.112429833],
+        [0.259470739, -0.191133526, 1.014997981],
+        [-0.932531344, 0.527671018, -0.042479596],
+      ]
+      rotation_dominant_axis: false
+      rotation_scale: 0.60
+      rotation_filter_alpha: 0.40
+    right:
+      type: uf::piper_pika_teleop
+      id: right_pika
+      port: /dev/pika_right
+      frequency: 100
+      use_gripper: false
+      scale_xyz: 0.50
+      tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+      robot_base_pose: [300, -150, 250, 180, 0, 0]
+      tracker_device_id: LHR-52C31F65
+      use_raw_translation_mapping: true
+      raw_translation_matrix: [
+        [0.742152364, -0.660548128, 0.113516691],
+        [0.636965134, 0.747823089, 0.187179183],
+        [-0.208531262, -0.066609299, 0.975744800],
+      ]
+      use_calibrated_rotation_mapping: true
+      apply_piper_tool_axis_correction: false
+      rotation_style: calibrated
+      pose_adaptive_rotation: false
+      # 2026-08-11 右 Pika 独立拟合，语义与左侧一致。
+      rotation_mapping_matrix: [
+        [0.649663921, 0.755396203, 0.116804594],
+        [0.030784953, -0.168024729, 0.991014662],
+        [-0.816011179, 0.592811786, 0.017701152],
+      ]
+      rotation_dominant_axis: false
+      rotation_scale: 0.60
+      rotation_filter_alpha: 0.40
+
+fps: 100
+
+dataset:
+  root: /home/star/lerobot_data/dual_pika_piper_x_j5_preview
+  repo_id: local/dual_pika_piper_x_j5_preview
+  single_task: 双 Pika 控制双 PiPER-X 的 J5 只读预览
+  fps: 50
+  episode_time_s: 30
+  reset_time_s: 20
+  num_episodes: 1
+  push_to_hub: false

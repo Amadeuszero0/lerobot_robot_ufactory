@@ -193,3 +193,23 @@ git log -1 --oneline
 5. **手腕俯仰没余量**：v1_final 启动不自动摆位，手动把夹爪摆到舒服姿态再开始。
 6. **快速甩动卡顿**：确认 `direct_max_step_mm: 25.0` / `direct_max_step_rad: 0.35` 在；仍卡可降到 15 / 0.20。
 7. **录制目录已存在**：录制入口会自动把残留目录改名备份；想续采加 `-r`。
+
+## PiPER-X J5 向外摆腕专项配置
+
+如果出现“右侧夹爪向右不动、左侧夹爪向左不动，J5 变化明显小于 J4/J6”的现象，不要直接增大旋转比例。先运行只读 PiPER-X IK 预览：
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_j5_preview.yaml \
+  2>&1 | tee /tmp/piper_x_j5_preview.log
+```
+
+确认左手向左时左 J5 目标减小、右手向右时右 J5 目标增大后，再运行保持当前速度、平移和夹爪参数的实机测试版：
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_j5_test.yaml \
+  2>&1 | tee /tmp/piper_x_j5_test.log
+```
+
+完整原因、预期日志和判断方法见 `PIPER_X_J5_DIAGNOSIS_ZH.md`。

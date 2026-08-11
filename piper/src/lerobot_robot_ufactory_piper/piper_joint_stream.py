@@ -398,13 +398,21 @@ class PiperJointStreamFollower(Robot):
         if self.config.dry_run:
             now_s = time.monotonic()
             if now_s - self._last_dry_run_log_s >= self.config.dry_run_log_interval_s:
+                current_deg = np.degrees(q_current)
+                target_deg = np.degrees(q_target)
                 delta_deg = np.degrees(q_target - q_current)
                 logger.warning(
-                    "IK PREVIEW %s residual=%.5f deg_delta=%s wrist(J4/J5/J6)=%s",
+                    "IK PREVIEW %s residual=%.5f "
+                    "J5=%.2f->%.2f(%+.2f)deg "
+                    "wrist_now(J4/J5/J6)=%s wrist_target=%s deg_delta=%s",
                     self.id,
                     residual,
+                    current_deg[4],
+                    target_deg[4],
+                    delta_deg[4],
+                    np.round(current_deg[3:6], 2).tolist(),
+                    np.round(target_deg[3:6], 2).tolist(),
                     np.round(delta_deg, 3).tolist(),
-                    np.round(delta_deg[3:6], 3).tolist(),
                 )
                 self._last_dry_run_log_s = now_s
         else:
