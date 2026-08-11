@@ -26,6 +26,7 @@ few mm. Write the candidate into a NEW test profile (the rotation part
 
 import argparse
 import math
+import sys
 import time
 
 import numpy as np
@@ -47,6 +48,12 @@ def _rotation_degrees(R: np.ndarray) -> float:
 
 
 def main() -> None:
+    # ``tee`` turns stdout into a pipe, so Python otherwise block-buffers all
+    # countdown messages and displays them only after sampling has finished.
+    # Force line buffering for an interactive calibration workflow.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", default="/dev/ttyUSB50")
     parser.add_argument(
@@ -75,15 +82,24 @@ def main() -> None:
     print("把 Pika 夹持中心轻轻抵住固定点。")
     print("倒计时结束后，保持中心不动，绕至少两个方向缓慢转动 Pika。")
     print()
+    input("固定装置和 Pika 都准备好后，按 Enter 开始5秒倒计时……")
     for left in (5, 4, 3, 2, 1):
-        print(f"{left}秒后开始采样……")
+        print(f"{left}秒后开始采样……", flush=True)
         time.sleep(1.0)
 
     positions: list[np.ndarray] = []
     rotations: list[np.ndarray] = []
     start = time.monotonic()
-    print(f"采样 {args.duration:.0f} 秒……")
-    while time.monotonic() - start < args.duration:
+    last_reported_second: int | None = None
+    print(f"现在开始采样，共 {args.duration:.0f} 秒。请立即缓慢转动 Pika。", flush=True)
+    while True:
+        elapsed = time.monotonic() - start
+        if elapsed >= args.duration:
+            break
+        remaining = max(0, int(math.ceil(args.duration - elapsed)))
+        if remaining != last_reported_second:
+            print(f"采样中：还剩 {remaining} 秒……", flush=True)
+            last_reported_second = remaining
         pose = sense.get_pose(dev)
         if pose is not None:
             positions.append(np.array(pose.position, dtype=float))
@@ -93,6 +109,7 @@ def main() -> None:
                 )
             )
         time.sleep(args.interval)
+    print("采样结束，正在计算……", flush=True)
 
     if len(positions) < 30:
         raise RuntimeError(f"有效帧太少 ({len(positions)})，检查 tracker 是否可见")
