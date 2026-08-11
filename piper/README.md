@@ -130,7 +130,11 @@ uf-vive-calibrate --force-calibrate
 python piper/tools/calibrate_tracker_offset.py --port /dev/ttyUSB0
 
 # Pika 轴向测量（生成平移映射矩阵，改基站布局后跑）
-python piper/tools/measure_pika_piper_mapping.py --port /dev/ttyUSB0 --tracker T20
+python piper/tools/measure_pika_piper_mapping.py \
+  --port /dev/pika_left \
+  --tracker LHR-818D4A5D \
+  --scale 0.35 \
+  --rotation-scale 0.60
 
 # joint_stream 前的手眼标定（基座 + 末端帧）
 python piper/tools/verify_ik_fk.py --port can0 --calibrate

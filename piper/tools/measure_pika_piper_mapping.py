@@ -25,6 +25,12 @@ import time
 
 import numpy as np
 
+# Install the same single-context Vive patch used by dual-Pika teleoperation
+# before PikaDevice imports/constructs its tracker.  This lets the diagnostic
+# accept persistent LHR serials instead of unstable discovery aliases such as
+# T20/T21, which can swap between process starts.
+import lerobot_robot_ufactory_piper.shared_vive_tracker  # noqa: F401
+
 from lerobot_robot_ufactory.devices.pika import PikaDevice
 from lerobot_robot_ufactory.devices.umi.vive_tracker.transformations import (
     Transformations,
@@ -179,8 +185,7 @@ def main() -> None:
     parser.add_argument(
         "--tracker",
         default=None,
-        help="explicit tracker id (e.g. T20) to skip the SDK device-list "
-        "auto-detect, which can race and miss trackers",
+        help="persistent tracker serial (for example LHR-818D4A5D)",
     )
     parser.add_argument("--scale", type=float, default=0.8, help="scale_xyz (mm command)")
     parser.add_argument("--rotation-scale", type=float, default=0.75, dest="rotation_scale")
