@@ -126,6 +126,22 @@ uf-piper-teleop \
   2>&1 | tee /tmp/dual_pika_piper_x_full_motion_v6.log
 ```
 
+## V7 全速双臂响应版本
+
+配置：`config/dual_pika_piper_x_full_speed_v7.yaml`
+
+- 保留 V6 已验证的左右平移矩阵、旋转方向矩阵和“平移意图优先”门控；
+- 双臂 `MOVE_P` 速度由 55% 提高到 100%；
+- 双手旋转比例由首轮保护值 0.30 恢复到已验证的 0.60，增强左手左转和双手抬头响应；
+- XYZ 比例仍为 0.50，避免把“速度提高”和“工作空间放大”混在一次实机测试中；
+- 首次运行仍应从小幅、单臂动作开始，再逐步测试双臂全幅动作。
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_full_speed_v7.yaml \
+  2>&1 | tee /tmp/dual_pika_piper_x_full_speed_v7.log
+```
+
 ## PiPER-X J5 实机测试
 
 配置：`config/dual_pika_piper_x_j5_test.yaml`

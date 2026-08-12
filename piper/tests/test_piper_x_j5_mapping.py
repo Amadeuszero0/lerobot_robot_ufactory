@@ -278,3 +278,41 @@ def test_full_motion_v6_only_adds_translation_intent_to_v5() -> None:
                 "translation_rotation_lock_max_translation_speed_mm_s"
             }
         } == v5["teleop"]["teleops"][side]
+
+
+def test_full_speed_v7_only_increases_speed_and_rotation_response() -> None:
+    v6 = _load_config("dual_pika_piper_x_full_motion_v6.yaml")
+    v7 = _load_config("dual_pika_piper_x_full_speed_v7.yaml")
+
+    assert v7["robot"]["type"] == "uf::dual_piper"
+    assert v7["robot"]["parallel_action"] is False
+    for side in ("left", "right"):
+        v6_robot = v6["robot"]["robots"][side]
+        v7_robot = v7["robot"]["robots"][side]
+        v6_teleop = v6["teleop"]["teleops"][side]
+        v7_teleop = v7["teleop"]["teleops"][side]
+
+        assert v6_robot["move_speed_percent"] == 55
+        assert v7_robot["move_speed_percent"] == 100
+        assert v6_teleop["rotation_scale"] == 0.30
+        assert v7_teleop["rotation_scale"] == 0.60
+        assert v7_teleop["scale_xyz"] == v6_teleop["scale_xyz"] == 0.50
+
+        assert {
+            key: value
+            for key, value in v7_robot.items()
+            if key not in {"id", "move_speed_percent"}
+        } == {
+            key: value
+            for key, value in v6_robot.items()
+            if key not in {"id", "move_speed_percent"}
+        }
+        assert {
+            key: value
+            for key, value in v7_teleop.items()
+            if key != "rotation_scale"
+        } == {
+            key: value
+            for key, value in v6_teleop.items()
+            if key != "rotation_scale"
+        }
