@@ -64,6 +64,23 @@ uf-piper-teleop \
   2>&1 | tee /tmp/piper_x_left_fix_preview_v2.log
 ```
 
+## 左腕连续性修复 V3：单左臂低速实机
+
+配置：`config/single_pika_piper_x_left_wrist_v3.yaml`
+
+- 只连接左臂 `can_left` 和左 Pika，右臂完全不连接；
+- 继续使用稳定的 `MOVE_P + EndPoseCtrl`，不启用实机抖动过的关节流；
+- `scale_xyz: 0.0`，首轮完全禁止 Pika 平移；
+- 左臂速度为 10%，单次旋转目标最多 0.025 rad；
+- 夹爪关闭，左腕旋转比例降为 V2 的一半；
+- 必须确认急停可用、机械臂周围净空，并先做 5 度小角度动作。
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/single_pika_piper_x_left_wrist_v3.yaml \
+  2>&1 | tee /tmp/piper_x_left_wrist_v3.log
+```
+
 ## PiPER-X J5 实机测试
 
 配置：`config/dual_pika_piper_x_j5_test.yaml`

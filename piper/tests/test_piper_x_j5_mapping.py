@@ -155,3 +155,33 @@ def test_left_fix_v2_is_read_only_and_matches_rotation_lock_gate() -> None:
     assert candidate["teleop"]["teleops"]["right"][
         "rotation_mapping_matrix"
     ] == baseline["right"]["rotation_mapping_matrix"]
+
+
+def test_left_wrist_v3_is_single_arm_move_p_and_rotation_only() -> None:
+    preview = _load_config(
+        "dual_pika_piper_x_j5_left_fix_preview_v2.yaml"
+    )
+    candidate = _load_config(
+        "single_pika_piper_x_left_wrist_v3.yaml"
+    )
+    robot = candidate["robot"]
+    teleop = candidate["teleop"]
+
+    assert robot["type"] == "uf::piper"
+    assert robot["port"] == "can_left"
+    assert robot["cartesian_command_mode"] == "direct"
+    assert robot["move_mode"] == "move_p"
+    assert robot["enable_torque_on_connect"] is True
+    assert robot["move_speed_percent"] == 10
+    assert robot["max_rotation_step_rad"] == 0.025
+    assert robot["direct_max_step_rad"] == 0.025
+    assert robot["send_gripper"] is False
+
+    assert teleop["port"] == "/dev/pika_left"
+    assert teleop["tracker_device_id"] == "LHR-818D4A5D"
+    assert teleop["scale_xyz"] == 0.0
+    assert teleop["use_gripper"] is False
+    assert teleop["rotation_scale"] == 0.30
+    assert teleop["rotation_mapping_matrix"] == preview["teleop"]["teleops"][
+        "left"
+    ]["rotation_mapping_matrix"]
