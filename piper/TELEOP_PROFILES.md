@@ -96,6 +96,21 @@ uf-piper-teleop \
   2>&1 | tee /tmp/piper_x_left_wrist_full_speed_v4.log
 ```
 
+## V5 全功能双臂 55% 版本
+
+配置：`config/dual_pika_piper_x_full_v5.yaml`
+
+- 双臂均使用稳定的 `MOVE_P + EndPoseCtrl`，运行速度 55%；
+- 恢复左右实测平移、夹爪控制及旋转时冻结 XYZ；
+- 左侧使用 V2/V3/V4 已验证的新正交矩阵，右侧保持稳定矩阵；
+- 两侧旋转比例统一为 0.30，并关闭高频旋转诊断日志。
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_full_v5.yaml \
+  2>&1 | tee /tmp/dual_pika_piper_x_full_v5.log
+```
+
 ## PiPER-X J5 实机测试
 
 配置：`config/dual_pika_piper_x_j5_test.yaml`

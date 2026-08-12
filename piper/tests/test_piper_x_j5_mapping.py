@@ -207,3 +207,40 @@ def test_left_wrist_v4_only_raises_v3_move_speed_to_baseline() -> None:
     } == {
         key: value for key, value in v3["teleop"].items() if key != "id"
     }
+
+
+def test_full_v5_uses_verified_dual_arm_move_p_settings() -> None:
+    preview = _load_config(
+        "dual_pika_piper_x_j5_left_fix_preview_v2.yaml"
+    )
+    baseline = _load_config(
+        "dual_pika_piper_x_j5_rotation_lock_test.yaml"
+    )
+    candidate = _load_config("dual_pika_piper_x_full_v5.yaml")
+
+    assert candidate["robot"]["type"] == "uf::dual_piper"
+    assert candidate["robot"]["parallel_action"] is False
+    for side in ("left", "right"):
+        robot = candidate["robot"]["robots"][side]
+        teleop = candidate["teleop"]["teleops"][side]
+        assert robot["type"] == "uf::piper"
+        assert robot["move_mode"] == "move_p"
+        assert robot["move_speed_percent"] == 55
+        assert robot["send_gripper"] is True
+        assert teleop["scale_xyz"] == 0.50
+        assert teleop["use_gripper"] is True
+        assert teleop["freeze_translation_while_rotating"] is True
+        assert teleop["rotation_scale"] == 0.30
+        assert teleop["rotation_debug"] is False
+        assert teleop["raw_translation_matrix"] == baseline["teleop"][
+            "teleops"
+        ][side]["raw_translation_matrix"]
+
+    assert candidate["teleop"]["teleops"]["left"][
+        "rotation_mapping_matrix"
+    ] == preview["teleop"]["teleops"]["left"]["rotation_mapping_matrix"]
+    assert candidate["teleop"]["teleops"]["right"][
+        "rotation_mapping_matrix"
+    ] == baseline["teleop"]["teleops"]["right"][
+        "rotation_mapping_matrix"
+    ]
