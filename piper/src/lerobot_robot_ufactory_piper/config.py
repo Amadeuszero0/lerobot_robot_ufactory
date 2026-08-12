@@ -47,10 +47,11 @@ class PiperFollowerConfig(RobotConfig):
     # Allows a true gripper-only profile: observations and gripper commands
     # remain active, but EndPoseCtrl/ModeCtrl are never sent by send_action.
     send_cartesian_pose: bool = True
-    # Ported from the senior lerobot_real fork: 'step' keeps the original
-    # per-cycle limiter; 'direct' sends the full target with following-error
-    # guards (smoother MOVE P tracking).
+    # 'official_ik' is the independent Lerobot-Real/PikaAnyArm control chain:
+    # solve the Piper-X official URDF in a worker and stream physical joints.
     cartesian_command_mode: str = "step"
+    ik_urdf_path: str | None = None
+    ik_package_dir: str | None = None
     max_cartesian_following_error_mm: float = 600.0
     max_rotation_following_error_rad: float = 3.2
     # Optional per-cycle caps in direct mode (None = unbounded, V16 behavior).
@@ -117,8 +118,16 @@ class PiperFollowerConfig(RobotConfig):
             bounds = getattr(self, name)
             if bounds is not None and bounds[0] >= bounds[1]:
                 raise ValueError(f"{name} must be ordered as (min, max)")
-        if self.cartesian_command_mode not in ("step", "direct"):
-            raise ValueError("cartesian_command_mode must be 'step' or 'direct'")
+        if self.cartesian_command_mode not in ("step", "direct", "official_ik"):
+            raise ValueError(
+                "cartesian_command_mode must be 'step', 'direct', or 'official_ik'"
+            )
+        if self.cartesian_command_mode == "official_ik" and (
+            not self.ik_urdf_path or not self.ik_package_dir
+        ):
+            raise ValueError(
+                "official_ik requires both ik_urdf_path and ik_package_dir"
+            )
         if self.max_cartesian_following_error_mm <= 0 or self.max_rotation_following_error_rad <= 0:
             raise ValueError("following error limits must be positive")
         if self.startup_tcp_pose is not None and len(self.startup_tcp_pose) != 6:
@@ -224,7 +233,8 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     # "calibrated" = fixed-matrix body-frame mapping; "calibrated_tool" keeps
     # that verified gesture mapping and additionally rotates about a physical
     # tool centre; "world_delta" = Lerobot-Real robot_base rotation only;
-    # "senior" = the full Lerobot-Real robot_base control target.
+    # "senior" = the full Lerobot-Real robot_base control target;
+    # "official" = the senior's unmodified local tool-frame formula.
     rotation_style: str = "calibrated"
     # Full rigid transform C (tool centre -> native Piper J6), expressed as
     # xyz(mm)+RPY(deg).  This is deliberately separate from
@@ -294,10 +304,11 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             "calibrated_tool",
             "world_delta",
             "senior",
+            "official",
         ):
             raise ValueError(
                 "rotation_style must be 'calibrated', 'calibrated_tool', "
-                "'world_delta' or 'senior'"
+                "'world_delta', 'senior' or 'official'"
             )
         if self.piper_tool_center_to_j6 is not None:
             if len(self.piper_tool_center_to_j6) != 6 or not all(

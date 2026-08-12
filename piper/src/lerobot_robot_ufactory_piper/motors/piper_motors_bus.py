@@ -1,6 +1,7 @@
 import logging
+import math
 import time
-from typing import Any
+from typing import Any, Sequence
 
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from piper_sdk import C_PiperInterface_V2
@@ -8,6 +9,20 @@ from piper_sdk import C_PiperInterface_V2
 from .tables import PARKING_POSITION
 
 logger = logging.getLogger(__name__)
+
+MOTOR_FAULT_FIELDS = {
+    "voltage_too_low": "undervoltage",
+    "motor_overheating": "motor overtemperature",
+    "driver_overcurrent": "driver overcurrent",
+    "driver_overheating": "driver overtemperature",
+    "collision_status": "collision protection",
+    "driver_error_status": "driver error",
+    "stall_status": "stall protection",
+}
+
+
+class PiperFeedbackError(RuntimeError):
+    """Raised when Piper status feedback is malformed or reports a fault."""
 
 
 class PiperMotorsBus:
@@ -186,6 +201,75 @@ class PiperMotorsBus:
         }
         return self._normalize(raw)
 
+    def get_joint_radians(self) -> tuple[float, ...]:
+        """Read the six physical joint angles in radians for official IK."""
+        joint = self.piper.GetArmJointMsgs().joint_state
+        return tuple(
+            math.radians(float(getattr(joint, f"joint_{index}")) / 1000.0)
+            for index in range(1, 7)
+        )
+
+    def get_joint_state(self) -> tuple[float, ...]:
+        """Read six joint radians followed by gripper width in metres."""
+        joints = self.get_joint_radians()
+        gripper = self.piper.GetArmGripperMsgs().gripper_state
+        return (*joints, float(gripper.grippers_angle) / 1_000_000.0)
+
+    def get_arm_status(self) -> Any:
+        """Return normal arm status, or fail closed on a reported arm fault."""
+        message = self.piper.GetArmStatus()
+        status = getattr(message, "arm_status", None)
+        if status is None:
+            raise PiperFeedbackError(f"Piper {self.id} returned malformed arm status")
+        arm_state = int(getattr(status, "arm_status", 0))
+        if arm_state:
+            raise PiperFeedbackError(
+                f"Piper {self.id} reports non-normal arm status 0x{arm_state:02X}"
+            )
+        error_code = int(getattr(status, "err_code", 0))
+        if error_code:
+            raise PiperFeedbackError(
+                f"Piper {self.id} reports arm fault 0x{error_code:04X}"
+            )
+        return status
+
+    def get_motor_status(self, *, require_enabled: bool) -> Any:
+        """Validate all six motor fault flags and, optionally, enable state."""
+        message = self.piper.GetArmLowSpdInfoMsgs()
+        enabled: list[bool] = []
+        faults: list[str] = []
+        for joint_index in range(1, 7):
+            motor = getattr(message, f"motor_{joint_index}", None)
+            status = getattr(motor, "foc_status", None)
+            required_fields = (*MOTOR_FAULT_FIELDS, "driver_enable_status")
+            if status is None or any(
+                not hasattr(status, field) for field in required_fields
+            ):
+                raise PiperFeedbackError(
+                    f"Piper {self.id} returned malformed motor {joint_index} status"
+                )
+            enabled.append(bool(status.driver_enable_status))
+            faults.extend(
+                f"joint {joint_index}: {label}"
+                for field, label in MOTOR_FAULT_FIELDS.items()
+                if bool(getattr(status, field))
+            )
+
+        if faults:
+            raise PiperFeedbackError(
+                f"Piper {self.id} reports motor faults: {', '.join(faults)}"
+            )
+        if require_enabled and not all(enabled):
+            raise PiperFeedbackError(
+                f"Piper {self.id} is not fully enabled (joint status: {enabled})"
+            )
+        return message
+
+    def assert_follower_ready(self) -> None:
+        """Fail closed before official-IK joint commands are sent."""
+        self.get_arm_status()
+        self.get_motor_status(require_enabled=True)
+
     def get_leader_position(self) -> dict[str, float]:
         joint = self.piper.GetArmJointCtrl().joint_ctrl
         gripper = self.piper.GetArmGripperCtrl().gripper_ctrl
@@ -220,6 +304,63 @@ class PiperMotorsBus:
         self._set_motion_ctrl(0x01, 0x01, speed_percent, 0x00)
         self.piper.JointCtrl(*(int(raw[f"joint{i}"]) for i in range(1, 7)))
         self.set_gripper_percent(action["gripper"])
+
+    def set_joint_state(
+        self,
+        target_joint: Sequence[float],
+        *,
+        speed_percent: int = 30,
+        gripper_effort: int = 1000,
+        gripper_ctrl_code: int = 0x01,
+    ) -> tuple[float, ...]:
+        """Send six joint radians and gripper width in metres through JointCtrl."""
+        if len(target_joint) != 7:
+            raise ValueError(
+                "Piper joint state must contain six radians and gripper metres"
+            )
+        if not 1 <= speed_percent <= 100:
+            raise ValueError("Piper joint command speed_percent must be in [1, 100]")
+        if not 0 <= gripper_effort <= 5000:
+            raise ValueError("Piper gripper effort must be in [0, 5000]")
+        if gripper_ctrl_code not in (0x01, 0x03):
+            raise ValueError("Piper gripper ctrl_code must be 0x01 or 0x03")
+
+        raw_joints: list[int] = []
+        for index, value in enumerate(target_joint[:6], start=1):
+            angle = float(value)
+            if not math.isfinite(angle):
+                raise ValueError("Piper joint command must contain only finite values")
+            raw_value = int(round(math.degrees(angle) * 1000.0))
+            calibration = self.calibration[f"joint{index}"]
+            if not calibration.range_min <= raw_value <= calibration.range_max:
+                raise ValueError(
+                    f"Piper joint{index} command {math.degrees(angle):.3f} deg is "
+                    f"outside [{calibration.range_min / 1000.0:.3f}, "
+                    f"{calibration.range_max / 1000.0:.3f}]"
+                )
+            raw_joints.append(raw_value)
+
+        gripper_width_m = float(target_joint[6])
+        if not math.isfinite(gripper_width_m):
+            raise ValueError("Piper joint command must contain only finite values")
+        raw_gripper = int(round(gripper_width_m * 1_000_000.0))
+        gripper_calibration = self.calibration["gripper"]
+        if not gripper_calibration.range_min <= raw_gripper <= gripper_calibration.range_max:
+            raise ValueError(
+                f"Piper gripper command {gripper_width_m:.6f} m is outside "
+                f"[{gripper_calibration.range_min / 1_000_000.0:.6f}, "
+                f"{gripper_calibration.range_max / 1_000_000.0:.6f}]"
+            )
+
+        self._set_motion_ctrl(0x01, 0x01, speed_percent, 0x00)
+        self.piper.JointCtrl(*raw_joints)
+        self.piper.GripperCtrl(
+            raw_gripper, gripper_effort, gripper_ctrl_code, 0
+        )
+        return (
+            *(math.radians(value / 1000.0) for value in raw_joints),
+            raw_gripper / 1_000_000.0,
+        )
 
     def set_end_pose(
         self,

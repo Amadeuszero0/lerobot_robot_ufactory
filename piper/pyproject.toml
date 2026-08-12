@@ -24,6 +24,10 @@ uf-piper-check-config = "lerobot_robot_ufactory_piper.scripts.check_config:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.8"]
+# Pinocchio with pinocchio.casadi must come from conda-forge; PyPI's `pin`
+# package is not sufficient for this solver. CasADi is listed here for users
+# who already have a compatible Pinocchio build in the environment.
+official-ik = ["casadi>=3.7.2"]
 
 [tool.setuptools]
 include-package-data = true
@@ -37,4 +41,3 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

@@ -56,6 +56,10 @@ class PiperFollower(Robot):
         self._force_step_cartesian = False
         self._last_tracking_warning_time_s = 0.0
         self._last_following_warning_s = 0.0
+        self._official_ik = None
+        self._last_ik_joint_command: tuple[float, ...] | None = None
+        self._last_ik_action: dict[str, float] | None = None
+        self._ik_over_limit = False
         if self.cameras:
             self._camera_executor = ThreadPoolExecutor(
                 max_workers=len(self.cameras), thread_name_prefix=f"{prefix or 'piper'}-camera"
@@ -103,8 +107,16 @@ class PiperFollower(Robot):
         self._last_pose_command_time_s = 0.0
         self._last_gripper_command_time_s = 0.0
         self._last_gripper_command = None
-        self.bus.connect(piper_init=self.config.piper_init_on_connect)
         try:
+            if self.config.cartesian_command_mode == "official_ik":
+                from .official_kinematics import OfficialPiperIKWorker
+
+                self._official_ik = OfficialPiperIKWorker(
+                    self.config.ik_urdf_path,
+                    self.config.ik_package_dir,
+                    name=self.id or self.prefix or "piper",
+                )
+            self.bus.connect(piper_init=self.config.piper_init_on_connect)
             if self.config.configure_role_on_connect:
                 self.bus.set_follower()
                 time.sleep(0.1)
@@ -136,10 +148,14 @@ class PiperFollower(Robot):
             for camera in self.cameras.values():
                 if camera.is_connected:
                     camera.disconnect()
-            self.bus.disconnect(
-                disable_torque=self.config.disable_torque_on_disconnect,
-                park=False,
-            )
+            if self.bus.is_connected:
+                self.bus.disconnect(
+                    disable_torque=self.config.disable_torque_on_disconnect,
+                    park=False,
+                )
+            if self._official_ik is not None:
+                self._official_ik.close()
+                self._official_ik = None
             raise
         logger.info("Connected Piper follower %s on %s", self.id, self.config.port)
 
@@ -293,6 +309,17 @@ class PiperFollower(Robot):
             clamp(target[1], self.config.workspace_y),
             clamp(target[2], self.config.workspace_z),
         )
+
+        if (
+            self.config.cartesian_command_mode == "official_ik"
+            and not self._force_step_cartesian
+        ):
+            return self._send_official_ik_action(
+                (*bounded_xyz, *target[3:6]),
+                current_xyz,
+                current_rotation,
+                local.get("gripper.pos", 0.0),
+            )
 
         is_cpv = self.config.move_mode == "move_cpv"
         if self.config.lock_orientation and self._locked_rotation is None:
@@ -480,6 +507,109 @@ class PiperFollower(Robot):
             sent["gripper.pos"] = gripper_unit
         return sent
 
+    def _send_official_ik_action(
+        self,
+        target_pose: tuple[float, ...],
+        current_xyz: tuple[float, ...],
+        current_rotation: tuple[float, ...],
+        gripper_position: float,
+    ) -> dict[str, float]:
+        """Run the senior official IK worker and stream physical joint targets."""
+        if self._official_ik is None:
+            raise RuntimeError("Piper official IK was not initialized")
+
+        self.bus.assert_follower_ready()
+        current_joints = self.bus.get_joint_radians()
+        gripper_unit = min(1.0, max(0.0, float(gripper_position)))
+        update = self._official_ik.update_target(
+            target_pose,
+            current_joints,
+            gripper_width_m=gripper_unit * 0.068,
+        )
+        if update is None:
+            return self._stream_last_ik_command(
+                current_xyz, current_rotation, gripper_unit
+            )
+        result = update.result
+        if result is None:
+            if not self._ik_over_limit:
+                logger.warning(
+                    "Piper %s official IK over_limit=True; holding the last valid target",
+                    self.id,
+                )
+            self._ik_over_limit = True
+            return self._stream_last_ik_command(
+                current_xyz, current_rotation, gripper_unit
+            )
+
+        if self._ik_over_limit:
+            logger.info(
+                "Piper %s official IK over_limit=False; joint streaming resumed",
+                self.id,
+            )
+        self._ik_over_limit = False
+        reference = self._last_ik_joint_command or current_joints
+        max_joint_change = max(
+            abs(target - previous)
+            for target, previous in zip(result.joints_rad, reference, strict=True)
+        )
+        if max_joint_change > math.radians(30.0):
+            steps = max(1, int(max_joint_change / math.radians(1.0)))
+            sent_joints = reference
+            for step in range(1, steps + 1):
+                ratio = step / steps
+                interpolated = tuple(
+                    previous + (target - previous) * ratio
+                    for previous, target in zip(
+                        reference, result.joints_rad, strict=True
+                    )
+                )
+                sent_state = self.bus.set_joint_state(
+                    (*interpolated, gripper_unit * 0.068),
+                    speed_percent=self.config.move_speed_percent,
+                    gripper_effort=self.config.gripper_effort,
+                    gripper_ctrl_code=self.config.gripper_ctrl_code,
+                )
+                sent_joints = sent_state[:6]
+                if step < steps:
+                    time.sleep(1.0 / 200.0)
+        else:
+            sent_state = self.bus.set_joint_state(
+                (*result.joints_rad, gripper_unit * 0.068),
+                speed_percent=self.config.move_speed_percent,
+                gripper_effort=self.config.gripper_effort,
+                gripper_ctrl_code=self.config.gripper_ctrl_code,
+            )
+            sent_joints = sent_state[:6]
+
+        self._last_ik_joint_command = sent_joints
+        sent = dict(zip(POSE_KEYS, update.target_pose, strict=True))
+        sent["gripper.pos"] = gripper_unit
+        self._last_ik_action = sent.copy()
+        return sent
+
+    def _stream_last_ik_command(
+        self,
+        current_xyz: tuple[float, ...],
+        current_rotation: tuple[float, ...],
+        gripper_unit: float,
+    ) -> dict[str, float]:
+        if self._last_ik_joint_command is not None:
+            sent_state = self.bus.set_joint_state(
+                (*self._last_ik_joint_command, gripper_unit * 0.068),
+                speed_percent=self.config.move_speed_percent,
+                gripper_effort=self.config.gripper_effort,
+                gripper_ctrl_code=self.config.gripper_ctrl_code,
+            )
+            self._last_ik_joint_command = sent_state[:6]
+        if self._last_ik_action is not None:
+            held = self._last_ik_action.copy()
+            held["gripper.pos"] = gripper_unit
+            return held
+        held = dict(zip(POSE_KEYS, (*current_xyz, *current_rotation), strict=True))
+        held["gripper.pos"] = gripper_unit
+        return held
+
     def parking(self) -> None:
         self.bus.parking()
 
@@ -490,14 +620,24 @@ class PiperFollower(Robot):
             and not self.config.disable_torque_on_disconnect
             and getattr(self.config, "hold_position_on_disconnect", False)
         ):
-            pose = self.bus.get_end_pose()
-            if all(math.isfinite(v) for v in pose):
-                self.bus.set_end_pose(
-                    pose,
-                    move_mode=self.config.move_mode,
+            if self.config.cartesian_command_mode == "official_ik":
+                state = self.bus.get_joint_state()
+                self.bus.set_joint_state(
+                    state,
                     speed_percent=self.config.move_speed_percent,
+                    gripper_effort=self.config.gripper_effort,
+                    gripper_ctrl_code=self.config.gripper_ctrl_code,
                 )
                 time.sleep(0.05)
+            else:
+                pose = self.bus.get_end_pose()
+                if all(math.isfinite(v) for v in pose):
+                    self.bus.set_end_pose(
+                        pose,
+                        move_mode=self.config.move_mode,
+                        speed_percent=self.config.move_speed_percent,
+                    )
+                    time.sleep(0.05)
         for camera in self.cameras.values():
             if camera.is_connected:
                 camera.disconnect()
@@ -508,6 +648,12 @@ class PiperFollower(Robot):
             disable_torque=self.config.disable_torque_on_disconnect,
             park=self.config.park_on_disconnect,
         )
+        if self._official_ik is not None:
+            self._official_ik.close()
+            self._official_ik = None
+        self._last_ik_joint_command = None
+        self._last_ik_action = None
+        self._ik_over_limit = False
         self._last_pose_command = None
         self._locked_rotation = None
         self._last_pose_command_time_s = 0.0

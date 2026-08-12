@@ -11,3 +11,8 @@ LeRobot is distributed under Apache-2.0.
 
 No copyright or license ownership is transferred by this integration.
 
+The optional `official_ik` dual-arm path also adapts the Piper-X tool-frame
+formula and Pinocchio/CasADi IK worker from the local Apache-2.0
+`Lerobot-Real-main` project. That implementation in turn documents its IK as
+adapted from AgileX PikaAnyArm. Pinocchio, CasADi, the Piper SDK and the
+external AgileX URDF remain subject to their own licenses.

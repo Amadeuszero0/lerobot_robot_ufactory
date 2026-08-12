@@ -392,6 +392,8 @@ class PiperPikaTeleop(_PikaTeleop):
         self._last_rotation_debug_time_s = 0.0
         self._begin_tracker_rot: np.ndarray | None = None
         self._begin_tracker_senior: tuple[np.ndarray, np.ndarray] | None = None
+        self._begin_tracker_official: np.ndarray | None = None
+        self._official_tracker_matrix_window: deque[np.ndarray] = deque(maxlen=3)
         self._piper_tool_center_to_j6_matrix: np.ndarray | None = None
         self._piper_j6_to_tool_center_matrix: np.ndarray | None = None
         if config.piper_tool_center_to_j6 is not None:
@@ -424,6 +426,8 @@ class PiperPikaTeleop(_PikaTeleop):
         self._last_rotation_debug_time_s = 0.0
         self._begin_tracker_rot = None
         self._begin_tracker_senior = None
+        self._begin_tracker_official = None
+        self._official_tracker_matrix_window.clear()
         if (
             enabled
             and self.config.pose_adaptive_rotation
@@ -461,7 +465,53 @@ class PiperPikaTeleop(_PikaTeleop):
             origin_rotation = Transformations.rxryrz_to_rotation_matrix(
                 *self._last_robot_pose[3:6]
             )
-            if self.config.rotation_style == "senior":
+            if self.config.rotation_style == "official":
+                # Senior Lerobot-Real/PikaAnyArm local tool-frame formula:
+                #   S_t = S_0 @ inverse(P_0 @ C) @ (P_t @ C)
+                # C is the configured tracker-to-native-J6 rigid transform.
+                pose = self.pika_sense.get_pose(
+                    self.pika_device.pika_tracker_device
+                )
+                if pose is None:
+                    return action
+                position = np.asarray(pose.position, dtype=float)
+                rotation = np.asarray(pose.rotation, dtype=float)
+                if (
+                    position.shape != (3,)
+                    or rotation.shape != (4,)
+                    or not np.all(np.isfinite(position))
+                    or not np.all(np.isfinite(rotation))
+                ):
+                    return action
+                tracker = np.eye(4)
+                tracker[:3, :3] = (
+                    Transformations.quaternion_to_rotation_matrix(rotation)
+                )
+                tracker[:3, 3] = position * 1000.0 * self.config.scale_xyz
+                tracker = self._filter_official_tracker_matrix(tracker)
+                tracker_robot = tracker @ self.tracker_to_robot_matrix
+                if self._begin_tracker_official is None:
+                    self._begin_tracker_official = tracker_robot.copy()
+                robot_target = (
+                    self.robot_base_matrix
+                    @ np.linalg.inv(self._begin_tracker_official)
+                    @ tracker_robot
+                )
+                official_vec = np.asarray(
+                    Transformations.rotation_matrix_to_xyzrxryrz(robot_target),
+                    dtype=float,
+                )
+                pose_keys = (
+                    f"{self.prefix}pose.x",
+                    f"{self.prefix}pose.y",
+                    f"{self.prefix}pose.z",
+                    f"{self.prefix}pose.rx",
+                    f"{self.prefix}pose.ry",
+                    f"{self.prefix}pose.rz",
+                )
+                for key, value in zip(pose_keys, official_vec, strict=True):
+                    action[key] = float(value)
+            elif self.config.rotation_style == "senior":
                 # Full senior Lerobot-Real robot_base control target:
                 #   G (gripper center) = Q @ (R_now R_start^T) @ Q^T @ G_base
                 #   p_G = p_G0 + Q @ (p_now - p_start);  S (J6) = G @ E^-1
@@ -746,6 +796,34 @@ class PiperPikaTeleop(_PikaTeleop):
 
         action[key] = float(self._filtered_gripper)
         return action
+
+    def _filter_official_tracker_matrix(self, tracker: np.ndarray) -> np.ndarray:
+        """Apply the senior implementation's three-sample spike rejection."""
+        if not self._official_tracker_matrix_window:
+            for _ in range(3):
+                self._official_tracker_matrix_window.append(tracker.copy())
+        else:
+            self._official_tracker_matrix_window.append(tracker.copy())
+
+        matrices = tuple(self._official_tracker_matrix_window)
+        filtered = matrices[-1].copy()
+        filtered[:3, 3] = np.median(
+            np.stack([matrix[:3, 3] for matrix in matrices]), axis=0
+        )
+        rotations = tuple(matrix[:3, :3] for matrix in matrices)
+
+        def rotation_distance(first: np.ndarray, second: np.ndarray) -> float:
+            cosine = (np.trace(first.T @ second) - 1.0) / 2.0
+            return math.acos(float(np.clip(cosine, -1.0, 1.0)))
+
+        scores = [
+            sum(rotation_distance(candidate, other) for other in rotations)
+            for candidate in rotations
+        ]
+        filtered[:3, :3] = rotations[
+            min(range(len(scores)), key=scores.__getitem__)
+        ]
+        return filtered
 
 
 # Apply the local fixed state-monitor loop to single-Pika teleoperation.
