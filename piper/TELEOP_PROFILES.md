@@ -111,6 +111,21 @@ uf-piper-teleop \
   2>&1 | tee /tmp/dual_pika_piper_x_full_v5.log
 ```
 
+## V6 全功能双臂运动意图版本
+
+配置：`config/dual_pika_piper_x_full_motion_v6.yaml`
+
+- 保留 V5 的双臂 `MOVE_P`、55% 速度、实测平移、旋转矩阵和夹爪；
+- 旋转冻结门控新增平移速度判定；
+- 控制点平移速度达到 20 mm/s 时，即使手腕同时转动也允许 XYZ 跟随；
+- 只有“旋转快、平移慢”的纯转腕仍会冻结 XYZ，避免转腕串入平移。
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_full_motion_v6.yaml \
+  2>&1 | tee /tmp/dual_pika_piper_x_full_motion_v6.log
+```
+
 ## PiPER-X J5 实机测试
 
 配置：`config/dual_pika_piper_x_j5_test.yaml`

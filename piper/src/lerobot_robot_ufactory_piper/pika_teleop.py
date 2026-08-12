@@ -126,6 +126,7 @@ class _PikaTeleop(UFactoryPikaTeleop):
         self._raw_mapping_robot_origin: np.ndarray | None = None
         self._last_mapped_translation: np.ndarray | None = None
         self._last_translation_gate_quaternion: np.ndarray | None = None
+        self._last_translation_gate_control_xyz_mm: np.ndarray | None = None
         self._last_translation_gate_time_s: float | None = None
         self._translation_rotation_locked = False
         self._translation_rotation_quiet_since_s: float | None = None
@@ -138,6 +139,7 @@ class _PikaTeleop(UFactoryPikaTeleop):
         self._raw_mapping_robot_origin = None
         self._last_mapped_translation = None
         self._last_translation_gate_quaternion = None
+        self._last_translation_gate_control_xyz_mm = None
         self._last_translation_gate_time_s = None
         self._translation_rotation_locked = False
         self._translation_rotation_quiet_since_s = None
@@ -197,7 +199,7 @@ class _PikaTeleop(UFactoryPikaTeleop):
             self._raw_mapping_robot_origin = origin.copy()
 
         released = self._update_translation_rotation_gate(
-            raw_quaternion, time.monotonic()
+            raw_quaternion, time.monotonic(), control_xyz_mm
         )
         if self._translation_rotation_locked:
             if self._last_mapped_translation is not None:
@@ -224,9 +226,12 @@ class _PikaTeleop(UFactoryPikaTeleop):
         return mapped
 
     def _update_translation_rotation_gate(
-        self, quaternion: np.ndarray, now_s: float
+        self,
+        quaternion: np.ndarray,
+        now_s: float,
+        control_xyz_mm: np.ndarray | None = None,
     ) -> bool:
-        """Update rotation-intent hysteresis; return True on lock release."""
+        """Update motion-intent hysteresis; return True on lock release."""
 
         if not getattr(self.config, "freeze_translation_while_rotating", False):
             return False
@@ -236,11 +241,18 @@ class _PikaTeleop(UFactoryPikaTeleop):
         if norm < 1e-9:
             return False
         q = q / norm
+        control_xyz = (
+            np.asarray(control_xyz_mm, dtype=float)
+            if control_xyz_mm is not None
+            else None
+        )
         if (
             self._last_translation_gate_quaternion is None
             or self._last_translation_gate_time_s is None
         ):
             self._last_translation_gate_quaternion = q
+            if control_xyz is not None:
+                self._last_translation_gate_control_xyz_mm = control_xyz.copy()
             self._last_translation_gate_time_s = now_s
             return False
 
@@ -256,21 +268,55 @@ class _PikaTeleop(UFactoryPikaTeleop):
         )
         angular_step_rad = 2.0 * math.acos(abs(dot))
         angular_speed_rad_s = angular_step_rad / dt_s
+        translation_speed_mm_s = 0.0
+        if (
+            control_xyz is not None
+            and self._last_translation_gate_control_xyz_mm is not None
+        ):
+            translation_speed_mm_s = float(
+                np.linalg.norm(
+                    control_xyz - self._last_translation_gate_control_xyz_mm
+                )
+                / dt_s
+            )
         self._last_translation_gate_quaternion = q
+        if control_xyz is not None:
+            self._last_translation_gate_control_xyz_mm = control_xyz.copy()
         self._last_translation_gate_time_s = now_s
 
         lock_speed = self.config.translation_rotation_lock_speed_rad_s
         release_speed = self.config.translation_rotation_release_speed_rad_s
+        max_translation_speed = getattr(
+            self.config,
+            "translation_rotation_lock_max_translation_speed_mm_s",
+            None,
+        )
+        translating = (
+            max_translation_speed is not None
+            and translation_speed_mm_s >= max_translation_speed
+        )
         if not self._translation_rotation_locked:
-            if angular_speed_rad_s >= lock_speed:
+            if angular_speed_rad_s >= lock_speed and not translating:
                 self._translation_rotation_locked = True
                 self._translation_rotation_quiet_since_s = None
                 logger.info(
-                    "Pika %s freezes XYZ during wrist rotation (%.3f rad/s)",
+                    "Pika %s freezes XYZ during wrist rotation "
+                    "(angular %.3f rad/s, translation %.1f mm/s)",
                     self.id,
                     angular_speed_rad_s,
+                    translation_speed_mm_s,
                 )
             return False
+
+        if translating:
+            self._translation_rotation_locked = False
+            self._translation_rotation_quiet_since_s = None
+            logger.info(
+                "Pika %s resumes XYZ for translation intent (%.1f mm/s)",
+                self.id,
+                translation_speed_mm_s,
+            )
+            return True
 
         if angular_speed_rad_s > release_speed:
             self._translation_rotation_quiet_since_s = None

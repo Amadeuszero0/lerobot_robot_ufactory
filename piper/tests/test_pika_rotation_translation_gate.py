@@ -10,7 +10,7 @@ def _quaternion_z(degrees: float) -> np.ndarray:
     return np.array([0.0, 0.0, np.sin(half), np.cos(half)], dtype=float)
 
 
-def _gate() -> _PikaTeleop:
+def _gate(max_translation_speed_mm_s: float | None = None) -> _PikaTeleop:
     gate = object.__new__(_PikaTeleop)
     gate.id = "test_pika"
     gate.config = SimpleNamespace(
@@ -19,8 +19,12 @@ def _gate() -> _PikaTeleop:
         translation_rotation_release_speed_rad_s=0.05,
         translation_rotation_release_delay_s=0.15,
         translation_rotation_speed_window_s=0.08,
+        translation_rotation_lock_max_translation_speed_mm_s=(
+            max_translation_speed_mm_s
+        ),
     )
     gate._last_translation_gate_quaternion = None
+    gate._last_translation_gate_control_xyz_mm = None
     gate._last_translation_gate_time_s = None
     gate._translation_rotation_locked = False
     gate._translation_rotation_quiet_since_s = None
@@ -58,4 +62,35 @@ def test_gate_ignores_single_frame_orientation_noise() -> None:
     # the 80 ms window the net orientation has returned to its starting pose.
     assert gate._update_translation_rotation_gate(_quaternion_z(0.3), 0.01) is False
     assert gate._update_translation_rotation_gate(_quaternion_z(0.0), 0.08) is False
+    assert gate._translation_rotation_locked is False
+
+
+def test_gate_keeps_xyz_open_during_translation_with_wrist_rotation() -> None:
+    gate = _gate(max_translation_speed_mm_s=20.0)
+    p0 = np.zeros(3)
+
+    assert gate._update_translation_rotation_gate(
+        _quaternion_z(0.0), 0.0, p0
+    ) is False
+    assert gate._update_translation_rotation_gate(
+        _quaternion_z(2.0), 0.1, np.array([10.0, 0.0, 0.0])
+    ) is False
+    assert gate._translation_rotation_locked is False
+
+
+def test_translation_intent_releases_an_active_rotation_lock() -> None:
+    gate = _gate(max_translation_speed_mm_s=20.0)
+    p0 = np.zeros(3)
+
+    assert gate._update_translation_rotation_gate(
+        _quaternion_z(0.0), 0.0, p0
+    ) is False
+    assert gate._update_translation_rotation_gate(
+        _quaternion_z(2.0), 0.1, p0
+    ) is False
+    assert gate._translation_rotation_locked is True
+
+    assert gate._update_translation_rotation_gate(
+        _quaternion_z(4.0), 0.2, np.array([10.0, 0.0, 0.0])
+    ) is True
     assert gate._translation_rotation_locked is False

@@ -261,6 +261,11 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     translation_rotation_release_speed_rad_s: float = 0.05
     translation_rotation_release_delay_s: float = 0.15
     translation_rotation_speed_window_s: float = 0.08
+    # Optional translation-intent override for the rotation gate.  When the
+    # scaled tracker control point moves faster than this, allow XYZ even if
+    # the operator's arm motion also contains wrist rotation.  None preserves
+    # the original rotation-only gate behavior.
+    translation_rotation_lock_max_translation_speed_mm_s: float | None = None
     # Override the calibrated rotation mapping (raw tracker relative rotation
     # vector -> EEF-local rotation vector) when re-derived for a specific
     # pose. Columns are the mapped directions for raw X (roll), raw Y (pitch),
@@ -343,6 +348,15 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
         if self.translation_rotation_speed_window_s <= 0:
             raise ValueError(
                 "translation_rotation_speed_window_s must be positive"
+            )
+        if (
+            self.translation_rotation_lock_max_translation_speed_mm_s
+            is not None
+            and self.translation_rotation_lock_max_translation_speed_mm_s <= 0
+        ):
+            raise ValueError(
+                "translation_rotation_lock_max_translation_speed_mm_s must be "
+                "positive when set"
             )
         if self.rotation_mapping_matrix is not None:
             if len(self.rotation_mapping_matrix) != 3 or any(

@@ -244,3 +244,37 @@ def test_full_v5_uses_verified_dual_arm_move_p_settings() -> None:
     ] == baseline["teleop"]["teleops"]["right"][
         "rotation_mapping_matrix"
     ]
+
+
+def test_full_motion_v6_only_adds_translation_intent_to_v5() -> None:
+    v5 = _load_config("dual_pika_piper_x_full_v5.yaml")
+    v6 = _load_config("dual_pika_piper_x_full_motion_v6.yaml")
+
+    assert v6["robot"]["type"] == "uf::dual_piper"
+    assert v6["robot"]["parallel_action"] is False
+    for side in ("left", "right"):
+        robot = v6["robot"]["robots"][side]
+        teleop = v6["teleop"]["teleops"][side]
+        assert robot["move_speed_percent"] == 55
+        assert teleop["scale_xyz"] == 0.50
+        assert teleop[
+            "translation_rotation_lock_max_translation_speed_mm_s"
+        ] == 20.0
+
+        assert {
+            key: value
+            for key, value in robot.items()
+            if key != "id"
+        } == {
+            key: value
+            for key, value in v5["robot"]["robots"][side].items()
+            if key != "id"
+        }
+        assert {
+            key: value
+            for key, value in teleop.items()
+            if key
+            not in {
+                "translation_rotation_lock_max_translation_speed_mm_s"
+            }
+        } == v5["teleop"]["teleops"][side]
