@@ -51,6 +51,10 @@ def _load_teleops(filename: str) -> dict:
     return data["teleop"]["teleops"]
 
 
+def _load_config(filename: str) -> dict:
+    return yaml.safe_load((_CONFIG_DIR / filename).read_text(encoding="utf-8"))
+
+
 def test_preview_and_actuated_profiles_use_the_same_j5_mapping() -> None:
     preview = _load_teleops("dual_pika_piper_x_j5_preview.yaml")
     actuated = _load_teleops("dual_pika_piper_x_j5_test.yaml")
@@ -103,3 +107,51 @@ def test_rotation_lock_profile_only_adds_separate_gesture_gate() -> None:
         assert candidate[side]["translation_rotation_release_speed_rad_s"] == 0.04
         assert candidate[side]["translation_rotation_release_delay_s"] == 0.15
         assert candidate[side]["translation_rotation_speed_window_s"] == 0.08
+
+
+def test_left_fix_v2_uses_an_orthogonal_left_rotation_mapping() -> None:
+    teleops = _load_teleops(
+        "dual_pika_piper_x_j5_left_fix_preview_v2.yaml"
+    )
+    mapping = np.asarray(teleops["left"]["rotation_mapping_matrix"], dtype=float)
+
+    np.testing.assert_allclose(mapping.T @ mapping, np.eye(3), atol=1e-8)
+    np.testing.assert_allclose(np.linalg.det(mapping), -1.0, atol=1e-8)
+
+    raw_vectors = _MEASURED_ROTATIONS["left"]
+    code_vectors = (_TRACKER_TO_EEF_ROTATION.T @ raw_vectors.T).T
+    code_vectors /= np.linalg.norm(code_vectors, axis=1)[:, None]
+    mapped = (mapping @ code_vectors.T).T
+    direction_errors_deg = np.degrees(
+        np.arccos(np.clip(np.sum(mapped * _EXPECTED_AXES, axis=1), -1.0, 1.0))
+    )
+    assert np.max(direction_errors_deg) < 11.0
+
+
+def test_left_fix_v2_is_read_only_and_matches_rotation_lock_gate() -> None:
+    baseline = _load_teleops("dual_pika_piper_x_j5_test.yaml")
+    candidate = _load_config(
+        "dual_pika_piper_x_j5_left_fix_preview_v2.yaml"
+    )
+
+    for side in ("left", "right"):
+        robot = candidate["robot"]["robots"][side]
+        teleop = candidate["teleop"]["teleops"][side]
+        assert robot["dry_run"] is True
+        assert robot["enable_torque_on_connect"] is False
+        assert robot["send_gripper"] is False
+        assert robot["dry_run_max_branch_jump_deg"] == 8.0
+        assert robot["dry_run_j5_singularity_deg"] == 3.0
+        assert teleop["freeze_translation_while_rotating"] is True
+        assert teleop["translation_rotation_lock_speed_rad_s"] == 0.12
+        assert teleop["translation_rotation_release_speed_rad_s"] == 0.04
+        assert teleop["translation_rotation_release_delay_s"] == 0.15
+        assert teleop["translation_rotation_speed_window_s"] == 0.08
+        assert teleop["rotation_debug"] is True
+        assert teleop["raw_translation_matrix"] == baseline[side][
+            "raw_translation_matrix"
+        ]
+
+    assert candidate["teleop"]["teleops"]["right"][
+        "rotation_mapping_matrix"
+    ] == baseline["right"]["rotation_mapping_matrix"]

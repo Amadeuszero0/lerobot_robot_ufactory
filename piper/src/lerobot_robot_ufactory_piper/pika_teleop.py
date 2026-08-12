@@ -343,6 +343,7 @@ class PiperPikaTeleop(_PikaTeleop):
         self._filtered_gripper: float | None = None
         self._last_direct_gripper: float | None = None
         self._filtered_rotation_delta: np.ndarray | None = None
+        self._last_rotation_debug_time_s = 0.0
         self._begin_tracker_rot: np.ndarray | None = None
         self._begin_tracker_senior: tuple[np.ndarray, np.ndarray] | None = None
         self._piper_tool_center_to_j6_matrix: np.ndarray | None = None
@@ -374,6 +375,7 @@ class PiperPikaTeleop(_PikaTeleop):
         self._gripper_samples.clear()
         self._last_direct_gripper = None
         self._filtered_rotation_delta = None
+        self._last_rotation_debug_time_s = 0.0
         self._begin_tracker_rot = None
         self._begin_tracker_senior = None
         if (
@@ -551,6 +553,7 @@ class PiperPikaTeleop(_PikaTeleop):
                     relative_rotation
                 )
                 mapped_vector = self._rotation_map @ relative_vector
+                mapped_unfiltered = mapped_vector.copy()
                 if self.config.rotation_dominant_axis:
                     dominant_index = int(np.argmax(np.abs(mapped_vector)))
                     dominant_vector = np.zeros(3, dtype=float)
@@ -567,6 +570,7 @@ class PiperPikaTeleop(_PikaTeleop):
                         )
                     mapped_vector = self._filtered_rotation_delta
                 mapped_vector *= self.config.rotation_scale
+                mapped_command = mapped_vector.copy()
                 corrected_rotation = (
                     origin_rotation
                     @ Transformations.rxryrz_to_rotation_matrix(*mapped_vector)
@@ -578,6 +582,33 @@ class PiperPikaTeleop(_PikaTeleop):
                     rotation_keys, corrected_vector, strict=True
                 ):
                     action[key] = float(value)
+
+                now_s = time.monotonic()
+                if (
+                    self.config.rotation_debug
+                    and now_s - self._last_rotation_debug_time_s
+                    >= self.config.rotation_debug_interval_s
+                ):
+                    translation_keys = (
+                        f"{self.prefix}pose.x",
+                        f"{self.prefix}pose.y",
+                        f"{self.prefix}pose.z",
+                    )
+                    logger.warning(
+                        "PIKA ROTATION DEBUG %s raw_relative=%s mapped=%s "
+                        "command=%s target_axis_angle=%s target_xyz_mm=%s "
+                        "translation_locked=%s",
+                        self.id,
+                        np.round(relative_vector, 4).tolist(),
+                        np.round(mapped_unfiltered, 4).tolist(),
+                        np.round(mapped_command, 4).tolist(),
+                        np.round(corrected_vector, 4).tolist(),
+                        np.round(
+                            [float(action[key]) for key in translation_keys], 2
+                        ).tolist(),
+                        self._translation_rotation_locked,
+                    )
+                    self._last_rotation_debug_time_s = now_s
 
             if self.config.rotation_style == "calibrated_tool":
                 # The calibrated branch above determines the already verified

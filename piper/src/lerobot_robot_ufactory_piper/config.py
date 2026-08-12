@@ -241,6 +241,11 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
     rotation_dominant_axis: bool = False
     rotation_scale: float = 1.0
     rotation_filter_alpha: float = 1.0
+    # Read-only/diagnostic profiles can emit the complete rotation mapping
+    # chain at a bounded rate.  Keep this disabled in normal teleoperation so
+    # logging cannot disturb the control-loop timing.
+    rotation_debug: bool = False
+    rotation_debug_interval_s: float = 0.20
     use_raw_translation_mapping: bool = False
     # Dual-arm: force which tracker this side uses (e.g. T20 / T21), and
     # optionally override the raw translation matrix per side (None = use the
@@ -312,6 +317,8 @@ class PiperPikaTeleopConfig(PikaTeleopConfig):
             )
         if not 0 < self.rotation_filter_alpha <= 1:
             raise ValueError("rotation_filter_alpha must be in (0, 1]")
+        if self.rotation_debug_interval_s <= 0:
+            raise ValueError("rotation_debug_interval_s must be positive")
         if self.raw_translation_matrix is not None:
             if len(self.raw_translation_matrix) != 3 or any(
                 len(row) != 3 for row in self.raw_translation_matrix

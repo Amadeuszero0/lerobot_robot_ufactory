@@ -62,6 +62,12 @@ class PiperJointStreamConfig(RobotConfig):
     # Calculate and report IK without sending ModeCtrl/JointCtrl/GripperCtrl.
     dry_run: bool = False
     dry_run_log_interval_s: float = 0.25
+    # A dry-run arm never follows q_target physically.  Seed the next preview
+    # solve from the previous valid target and reject discontinuous branches,
+    # otherwise every frame restarts from stale feedback and can alternate
+    # between equivalent wrist solutions.
+    dry_run_max_branch_jump_deg: float = 8.0
+    dry_run_j5_singularity_deg: float = 3.0
 
     # Cartesian target clamps (same safety semantics as PiperFollower).
     max_cartesian_step_mm: float = 8.0
@@ -117,6 +123,10 @@ class PiperJointStreamConfig(RobotConfig):
             raise ValueError("kinematic_model must be 'piper' or 'piper_x'")
         if self.dry_run_log_interval_s <= 0:
             raise ValueError("dry_run_log_interval_s must be positive")
+        if self.dry_run_max_branch_jump_deg <= 0:
+            raise ValueError("dry_run_max_branch_jump_deg must be positive")
+        if self.dry_run_j5_singularity_deg < 0:
+            raise ValueError("dry_run_j5_singularity_deg must be non-negative")
         for name in (
             "base_xyz_mm",
             "base_rpy_deg",
@@ -352,6 +362,11 @@ class PiperJointStreamFollower(Robot):
         if self.config.send_gripper:
             sent["gripper.pos"] = local["gripper.pos"]
         if in_deadband:
+            if self.config.dry_run:
+                # A neutral target marks a new preview episode/origin.  The
+                # next non-neutral frame must seed from live joint feedback,
+                # not from a target retained across pause/re-enable.
+                self._last_joint_cmd_rad = None
             if self.config.send_gripper and not self.config.dry_run:
                 self._send_gripper(local["gripper.pos"], sent)
             return sent
@@ -367,14 +382,33 @@ class PiperJointStreamFollower(Robot):
         roll_deg, pitch_deg, yaw_deg = axis_angle_to_rpy_degrees(*limited_rot)
 
         kin = self._kinematics()
-        q_target, residual = kin.ik(
+        previous_preview_target = (
+            self._last_joint_cmd_rad
+            if self.config.dry_run and self._last_joint_cmd_rad is not None
+            else None
+        )
+        q_seed = (
+            previous_preview_target
+            if previous_preview_target is not None
+            else q_current
+        )
+        q_candidate, residual = kin.ik(
             limited_xyz,
             (roll_deg, pitch_deg, yaw_deg),
-            q_current,
+            q_seed,
             max_iter=self.config.ik_max_iter,
             damping=self.config.ik_damping,
             weight_ori=self.config.ik_weight_ori,
         )
+        branch_jump_deg = 0.0
+        branch_jump = False
+        if previous_preview_target is not None:
+            branch_jump_deg = float(
+                np.max(np.abs(np.degrees(q_candidate - previous_preview_target)))
+            )
+            branch_jump = (
+                branch_jump_deg > self.config.dry_run_max_branch_jump_deg
+            )
         if residual > self.config.ik_residual_limit:
             now_s = time.monotonic()
             if now_s - self._last_ik_warning_s >= 1.0:
@@ -389,7 +423,18 @@ class PiperJointStreamFollower(Robot):
                 if self._last_joint_cmd_rad is not None
                 else q_current
             )
+        elif self.config.dry_run and branch_jump:
+            logger.warning(
+                "IK BRANCH JUMP %s max_step=%.2fdeg limit=%.2fdeg "
+                "candidate_wrist=%s; holding previous preview target",
+                self.id,
+                branch_jump_deg,
+                self.config.dry_run_max_branch_jump_deg,
+                np.round(np.degrees(q_candidate[3:6]), 2).tolist(),
+            )
+            q_target = previous_preview_target
         else:
+            q_target = q_candidate
             self._last_joint_cmd_rad = q_target
 
         max_joint_step = math.radians(self.config.max_joint_step_deg)
@@ -401,10 +446,16 @@ class PiperJointStreamFollower(Robot):
                 current_deg = np.degrees(q_current)
                 target_deg = np.degrees(q_target)
                 delta_deg = np.degrees(q_target - q_current)
+                j5_near_zero = (
+                    abs(float(target_deg[4]))
+                    <= self.config.dry_run_j5_singularity_deg
+                )
                 logger.warning(
                     "IK PREVIEW %s residual=%.5f "
                     "J5=%.2f->%.2f(%+.2f)deg "
-                    "wrist_now(J4/J5/J6)=%s wrist_target=%s deg_delta=%s",
+                    "wrist_now(J4/J5/J6)=%s wrist_target=%s deg_delta=%s "
+                    "target_xyz_mm=%s target_axis_angle=%s "
+                    "branch_step=%.2fdeg j5_near_zero=%s",
                     self.id,
                     residual,
                     current_deg[4],
@@ -413,6 +464,10 @@ class PiperJointStreamFollower(Robot):
                     np.round(current_deg[3:6], 2).tolist(),
                     np.round(target_deg[3:6], 2).tolist(),
                     np.round(delta_deg, 3).tolist(),
+                    np.round(limited_xyz, 2).tolist(),
+                    np.round(limited_rot, 4).tolist(),
+                    branch_jump_deg,
+                    j5_near_zero,
                 )
                 self._last_dry_run_log_s = now_s
         else:

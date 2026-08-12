@@ -46,6 +46,24 @@ uf-piper-teleop \
   --config_path=piper/config/dual_pika_piper_x_j5_preview.yaml
 ```
 
+## 左腕连续性修复 V2 只读预览
+
+配置：`config/dual_pika_piper_x_j5_left_fix_preview_v2.yaml`
+
+- 两侧均为 `dry_run`，不会启用力矩或发送运动/夹爪命令；
+- 左侧使用最近正交旋转矩阵，去除旧三点拟合矩阵的剪切；
+- 与旋转锁实机候选一致，在转腕时冻结 XYZ；
+- dry-run IK 使用上一帧有效目标连续求解，并报告/拒绝腕部解支跳变；
+- 日志包含 Pika 原始/映射旋转、目标 XYZ/轴角、J5 近零与 branch step。
+
+它是当前左腕“先右后左”问题的诊断入口，不是实机控制配置：
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/dual_pika_piper_x_j5_left_fix_preview_v2.yaml \
+  2>&1 | tee /tmp/piper_x_left_fix_preview_v2.log
+```
+
 ## PiPER-X J5 实机测试
 
 配置：`config/dual_pika_piper_x_j5_test.yaml`
