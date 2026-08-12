@@ -81,6 +81,21 @@ uf-piper-teleop \
   2>&1 | tee /tmp/piper_x_left_wrist_v3.log
 ```
 
+## 左腕连续性修复 V4：55% 速度验证
+
+配置：`config/single_pika_piper_x_left_wrist_full_speed_v4.yaml`
+
+- 相对 V3 只把 `move_speed_percent` 从 10 提高到当前实机基线 55；
+- 仍然只连接左臂，Pika 平移与夹爪保持关闭；
+- 旋转比例仍为 0.30，单次旋转目标限制仍为 0.025 rad；
+- 用于判断提高 MOVE_P 速度是否会放大末端轻微晃动。
+
+```bash
+uf-piper-teleop \
+  --config_path=piper/config/single_pika_piper_x_left_wrist_full_speed_v4.yaml \
+  2>&1 | tee /tmp/piper_x_left_wrist_full_speed_v4.log
+```
+
 ## PiPER-X J5 实机测试
 
 配置：`config/dual_pika_piper_x_j5_test.yaml`

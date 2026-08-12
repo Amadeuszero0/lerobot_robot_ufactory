@@ -185,3 +185,25 @@ def test_left_wrist_v3_is_single_arm_move_p_and_rotation_only() -> None:
     assert teleop["rotation_mapping_matrix"] == preview["teleop"]["teleops"][
         "left"
     ]["rotation_mapping_matrix"]
+
+
+def test_left_wrist_v4_only_raises_v3_move_speed_to_baseline() -> None:
+    v3 = _load_config("single_pika_piper_x_left_wrist_v3.yaml")
+    v4 = _load_config(
+        "single_pika_piper_x_left_wrist_full_speed_v4.yaml"
+    )
+
+    assert v4["robot"]["move_speed_percent"] == 55
+    assert v3["robot"]["move_speed_percent"] == 10
+
+    ignored = {"id", "move_speed_percent"}
+    assert {
+        key: value for key, value in v4["robot"].items() if key not in ignored
+    } == {
+        key: value for key, value in v3["robot"].items() if key not in ignored
+    }
+    assert {
+        key: value for key, value in v4["teleop"].items() if key != "id"
+    } == {
+        key: value for key, value in v3["teleop"].items() if key != "id"
+    }

@@ -1,0 +1,83 @@
+# 左 Pika + 左 PiPER-X：左腕连续性修复 V4，55% 运行速度验证。
+#
+# 只将 V3 的 MOVE_P 速度从 10% 提高到当前项目实机基线 55%。
+# 继续只连接左臂，关闭平移和夹爪，并保留 V2 验证通过的旋转矩阵、
+# 0.30 旋转比例及 0.025 rad 单次旋转目标限制。
+robot:
+  type: uf::piper
+  id: left_piper_x_left_wrist_full_speed_v4
+  port: can_left
+  control_space: cartesian
+  configure_role_on_connect: false
+  piper_init_on_connect: false
+  enable_torque_on_connect: true
+  park_on_connect: false
+  park_on_disconnect: false
+  disable_torque_on_disconnect: false
+  hold_position_on_disconnect: true
+  feedback_startup_timeout_s: 5.0
+  cartesian_command_mode: direct
+  send_cartesian_pose: true
+  max_cartesian_step_mm: 3.0
+  max_rotation_step_rad: 0.025
+  max_cartesian_following_error_mm: 300.0
+  max_rotation_following_error_rad: 2.0
+  direct_max_step_mm: 3.0
+  direct_max_step_rad: 0.025
+  translation_deadband_mm: 5.0
+  rotation_deadband_rad: 0.020
+  workspace_x: [50.0, 600.0]
+  workspace_y: [-500.0, 500.0]
+  workspace_z: [50.0, 600.0]
+  move_mode: move_p
+  move_speed_percent: 55
+  send_gripper: false
+  cameras: {}
+
+teleop:
+  type: uf::piper_pika_teleop
+  id: left_pika_x_left_wrist_full_speed_v4
+  port: /dev/pika_left
+  frequency: 100
+  use_gripper: false
+  scale_xyz: 0.0
+  tracker_to_robot_eef: [0, 0, 0, 180, -90, 0]
+  robot_base_pose: [300, 150, 250, 180, 0, 0]
+  tracker_device_id: LHR-818D4A5D
+  use_raw_translation_mapping: true
+  raw_translation_matrix: [
+    [0.749125989, -0.659224359, -0.065065328],
+    [0.659294133, 0.751519460, -0.023446675],
+    [0.064354479, -0.025332676, 0.997605511],
+  ]
+  freeze_translation_while_rotating: true
+  translation_rotation_lock_speed_rad_s: 0.12
+  translation_rotation_release_speed_rad_s: 0.04
+  translation_rotation_release_delay_s: 0.15
+  translation_rotation_speed_window_s: 0.08
+  use_calibrated_rotation_mapping: true
+  apply_piper_tool_axis_correction: false
+  rotation_style: calibrated
+  pose_adaptive_rotation: false
+  rotation_mapping_matrix: [
+    [0.554845461, 0.829130049, 0.068482670],
+    [0.074991940, -0.131824225, 0.988432386],
+    [-0.828566668, 0.543291575, 0.135320144],
+  ]
+  rotation_dominant_axis: false
+  rotation_scale: 0.30
+  rotation_filter_alpha: 0.40
+  rotation_debug: true
+  rotation_debug_interval_s: 0.20
+
+fps: 100
+
+dataset:
+  root: /home/star/lerobot_data/single_pika_piper_x_left_wrist_full_speed_v4
+  repo_id: local/single_pika_piper_x_left_wrist_full_speed_v4
+  single_task: 左 PiPER-X 左腕 V4 55% 运行速度验证
+  fps: 50
+  episode_time_s: 30
+  reset_time_s: 20
+  num_episodes: 1
+  push_to_hub: false
